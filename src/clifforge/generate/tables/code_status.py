@@ -69,6 +69,9 @@ def sample_code_status(
     los_hours = spine.n_intervals * _grid_step_hours(pack)
     events = [CodeStatusEvent(patient_id, admit_dttm, "Full")]  # everyone starts Full
 
+    if los_hours <= 0:
+        return events  # zero-length stay: only the admission Full status (keeps start times strict)
+
     if spine.outcome == "expired":
         if rng.random() < _DNR_PROB_EXPIRED:
             events.append(

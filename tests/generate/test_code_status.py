@@ -83,6 +83,18 @@ def test_start_times_are_ordered() -> None:
         assert len(set(times)) == len(times)  # strictly increasing
 
 
+def test_zero_length_stay_emits_only_full() -> None:
+    # A zero-interval spine has no horizon for later events; emitting them would
+    # collapse every start_dttm onto admit and break the ordering guarantee.
+    pack = _pack()
+    events = sample_code_status(
+        _spine("expired", n=0), pack, np.random.default_rng(0), patient_id="P"
+    )
+    assert [e.code_status_category for e in events] == ["Full"]
+    times = [e.start_dttm for e in events]
+    assert len(set(times)) == len(times)  # trivially strict
+
+
 def test_categories_are_exact_mcide_members() -> None:
     pack = _pack()
     ok = set(categories("code_status", "code_status_category"))

@@ -140,6 +140,8 @@ def sample_respiratory_support(
     """Emit one hospitalization's respiratory-support rows (R10, AE1, AE2, R22)."""
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
     grid_step = _grid_step_hours(pack)
+    if not spine.support_level:
+        return []  # empty spine -> no device segments (match the sibling generators)
 
     # Per-interval (device, tracheostomy) with the latch + AE1 weaning rule.
     trach = 0

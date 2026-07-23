@@ -19,6 +19,17 @@ from clifforge.reference import bounds, categories
 _GRID = 1.0
 _TRACH_N = 72  # must match _TRACH_MIN_IMV_INTERVALS
 
+# The R10 device x mode matrix, written independently of the generator's own
+# DEVICE_SET_FIELDS so a wrong entry there is caught rather than tautologically
+# confirmed. Covers every device the generator can actually emit.
+_R10_EXPECTED_SET_FIELDS = {
+    "IMV": {"fio2_set", "tidal_volume_set", "resp_rate_set"},
+    "High Flow NC": {"fio2_set", "lpm_set"},
+    "Nasal Cannula": {"lpm_set"},
+    "Room Air": set(),
+    "Trach Collar": set(),
+}
+
 
 def _pack(grid_step_hours: float = _GRID) -> ParamPack:
     return ParamPack(
@@ -50,9 +61,20 @@ def test_is_deterministic() -> None:
 
 def test_each_device_populates_exactly_its_matrix_fields() -> None:
     pack = _pack()
-    sp = _spine([0, 1, 2, 3], hid="Hm")
-    for row in sample_respiratory_support(sp, pack, np.random.default_rng(0)):
-        assert set(row.set_values) == set(DEVICE_SET_FIELDS[row.device_category])
+    # A base-device spine plus a long-IMV-then-wean spine reaches every emittable
+    # device, including Trach Collar. Assert against the independent R10 table.
+    seen: set[str] = set()
+    for levels, hid in (([0, 1, 2, 3], "Hm"), ([3] * _TRACH_N + [1], "Ht")):
+        for row in sample_respiratory_support(
+            _spine(levels, hid=hid), pack, np.random.default_rng(0)
+        ):
+            assert set(row.set_values) == _R10_EXPECTED_SET_FIELDS[row.device_category]
+            seen.add(row.device_category)
+    # The generator's own matrix must agree with the independent expectation for
+    # every device it can emit (guards DEVICE_SET_FIELDS against silent drift).
+    for device in seen:
+        assert set(DEVICE_SET_FIELDS[device]) == _R10_EXPECTED_SET_FIELDS[device]
+    assert {"Room Air", "Nasal Cannula", "High Flow NC", "IMV", "Trach Collar"} <= seen
 
 
 def test_set_values_within_bounds() -> None:
@@ -126,6 +148,20 @@ def test_frame_passes_gate_and_datetimes_are_tz_aware() -> None:
     dtype = frame.schema["recorded_dttm"]
     assert isinstance(dtype, pl.Datetime) and dtype.time_zone == "UTC"
     assert gate.validate(frame, "respiratory_support", run_secondary=False).pandera_passed
+
+
+def test_empty_spine_yields_no_rows() -> None:
+    pack = _pack()
+    empty = SpineFrame(
+        hospitalization_id="H0",
+        support_level=[],
+        resp_flag=[],
+        cv_flag=[],
+        renal_flag=[],
+        neuro_flag=[],
+        outcome="alive",
+    )
+    assert sample_respiratory_support(empty, pack, np.random.default_rng(0)) == []
 
 
 def test_module_exports() -> None:

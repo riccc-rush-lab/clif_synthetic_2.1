@@ -77,10 +77,13 @@ def test_norepinephrine_starts_only_under_cv_failure() -> None:
     cv = [False, True, True, False, True, False, True, True]
     sp = _spine([2] * len(cv), cv, hid="Hcv")
     rows = sample_medication_admin_continuous(sp, pack, np.random.default_rng(2))
-    for r in rows:
-        if r.med_category == "norepinephrine" and r.mar_action_category == "start":
-            idx = int((r.admin_dttm - datetime(2020, 1, 1, tzinfo=UTC)).total_seconds() / 3600)
-            assert cv[idx]  # every vasopressor start sits in a cv-failure interval
+    starts = [
+        r for r in rows if r.med_category == "norepinephrine" and r.mar_action_category == "start"
+    ]
+    assert starts  # coupling must actually fire (guards against a vacuous pass)
+    for r in starts:
+        idx = int((r.admin_dttm - datetime(2020, 1, 1, tzinfo=UTC)).total_seconds() / 3600)
+        assert cv[idx]  # every vasopressor start sits in a cv-failure interval
 
 
 def test_sedative_runs_during_invasive_ventilation() -> None:

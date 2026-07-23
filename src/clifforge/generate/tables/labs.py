@@ -121,8 +121,10 @@ def _panel_intervals(support_level: list[int], grid_step: float) -> list[int]:
 def _clamp(value: float, lab: str) -> float:
     try:
         lower, upper = bounds("labs", lab)
-    except (KeyError, ValueError):
-        return value  # no fitted bounds for this lab -> leave as drawn
+    except (LookupError, ValueError):
+        # reference.bounds raises ReferenceDataError (a LookupError) when a lab has
+        # no fitted outlier bounds — leave the value as drawn rather than crash.
+        return value
     return min(max(value, lower), upper)
 
 
