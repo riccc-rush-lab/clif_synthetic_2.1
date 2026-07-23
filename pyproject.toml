@@ -59,5 +59,15 @@ python_version = "3.11"
 strict = true
 files = ["src"]
 
+# clifpy (advisory secondary conformance gate) ships no py.typed marker / stubs.
+[[tool.mypy.overrides]]
+module = ["clifpy.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# clifpy's validator internals emit polars streaming-deprecation warnings we can't
+# fix upstream; silence just those so the conformance suite output stays readable.
+filterwarnings = [
+    "ignore:the `streaming` parameter was deprecated:DeprecationWarning",
+]

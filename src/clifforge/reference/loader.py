@@ -22,6 +22,7 @@ from typing import Any
 
 _DATA_ROOT = Path(__file__).parent / "data"
 _MANIFEST_PATH = _DATA_ROOT / "manifest.json"
+_DICTIONARY_PATH = _DATA_ROOT / "dictionary.json"
 
 
 class ReferenceDataError(LookupError):
@@ -36,6 +37,18 @@ def _manifest() -> dict[str, Any]:
             "Run `uv run python scripts/vendor_reference.py` to vendor CLIF 2.1.0 data."
         )
     with _MANIFEST_PATH.open(encoding="utf-8") as fh:
+        data: dict[str, Any] = json.load(fh)
+    return data
+
+
+@lru_cache(maxsize=1)
+def _dictionary() -> dict[str, Any]:
+    if not _DICTIONARY_PATH.exists():
+        raise ReferenceDataError(
+            f"Data dictionary not found at {_DICTIONARY_PATH}. "
+            "Run `uv run python scripts/vendor_dictionary.py` to vendor the CLIF 2.1.0 dictionary."
+        )
+    with _DICTIONARY_PATH.open(encoding="utf-8") as fh:
         data: dict[str, Any] = json.load(fh)
     return data
 
@@ -78,6 +91,50 @@ def provenance() -> dict[str, str]:
 def tables() -> list[str]:
     """All tables that have at least one vendored mCIDE category field."""
     return sorted(_manifest()["mcide"].keys())
+
+
+def dictionary_tables() -> list[str]:
+    """All CLIF 2.1.0 tables defined in the vendored data dictionary."""
+    return sorted(_dictionary()["tables"].keys())
+
+
+def table_columns(table: str) -> list[dict[str, str]]:
+    """Return the dictionary column list for ``table`` as ``[{name, dtype}, ...]``.
+
+    ``dtype`` is the CLIF data-dictionary type (VARCHAR / DATETIME / DOUBLE /
+    INT / ...), or ``UNKNOWN`` for Concept-tier columns the dictionary documents
+    without a data type. Raises if the table is not in the dictionary.
+    """
+    tables_map = _dictionary()["tables"]
+    if table not in tables_map:
+        raise ReferenceDataError(
+            f"No dictionary entry for table {table!r}. "
+            f"Known tables: {', '.join(sorted(tables_map))}"
+        )
+    return [dict(c) for c in tables_map[table]["columns"]]
+
+
+def table_maturity(table: str) -> str:
+    """Return ``'beta'`` or ``'concept'`` for a dictionary table."""
+    tables_map = _dictionary()["tables"]
+    if table not in tables_map:
+        raise ReferenceDataError(f"No dictionary entry for table {table!r}.")
+    maturity = tables_map[table].get("maturity")
+    if maturity is None:
+        raise ReferenceDataError(f"Table {table!r} has no recorded maturity tier.")
+    return str(maturity)
+
+
+def dictionary_provenance() -> dict[str, str]:
+    """Source provenance for the vendored data dictionary (repo, commit, ...)."""
+    d = _dictionary()
+    return {
+        "clif_version": d["clif_version"],
+        "source_repo": d["source_repo"],
+        "source_commit": d["source_commit"],
+        "source_path": d["source_path"],
+        "retrieved_at": d["retrieved_at"],
+    }
 
 
 def mcide_fields(table: str) -> list[str]:

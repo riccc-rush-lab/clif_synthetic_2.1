@@ -1,0 +1,1024 @@
+{
+  "clif_version": "2.1.0",
+  "source_repo": "https://github.com/clif-consortium/website",
+  "source_commit": "888353c0521ac2ce2c380cf2ec94cedaabd36bfe",
+  "source_path": "data-dictionary/data-dictionary-2.1.0.qmd",
+  "retrieved_at": "2026-07-23",
+  "note": "Parsed from the CLIF 2.1.0 Quarto data dictionary. Column data types recorded as UNKNOWN come from Concept-tier tables the dictionary documents without a Data Type column; the schema generator defaults them to string.",
+  "tables": {
+    "adt": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "hospital_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "hospital_type",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "in_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "out_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "location_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "location_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "location_type",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "code_status": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "patient_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "start_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "code_status_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "code_status_category",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "crrt_therapy": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "device_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "recorded_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "crrt_mode_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "crrt_mode_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "dialysis_machine_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "blood_flow_rate",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "pre_filter_replacement_fluid_rate",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "post_filter_replacement_fluid_rate",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "dialysate_flow_rate",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "ultrafiltration_out",
+          "dtype": "DOUBLE"
+        }
+      ]
+    },
+    "ecmo_mcs": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "recorded_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "device_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "device_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mcs_group",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "device_metric_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "device_rate",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "flow",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "sweep",
+          "dtype": "DOUBLE"
+        }
+      ]
+    },
+    "hospital_diagnosis": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "patient_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "diagnostic_code",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "diagnosis_code_format",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "start_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "end_dttm",
+          "dtype": "DATETIME"
+        }
+      ]
+    },
+    "hospitalization": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "patient_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "hospitalization_joined_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "admission_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "discharge_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "age_at_admission",
+          "dtype": "INT"
+        },
+        {
+          "name": "admission_type_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "admission_type_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "discharge_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "discharge_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "zipcode_nine_digit",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "zipcode_five_digit",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "census_block_code",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "census_block_group_code",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "census_tract",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "state_code",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "county_code",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "intake_output": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "intake_dttm",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "fluid_name",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "amount",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "in_out_flag",
+          "dtype": "UNKNOWN"
+        }
+      ]
+    },
+    "invasive_hemodynamics": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "recorded_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "measure_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "measure_category",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "key_icu_orders": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "order_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "order_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "order_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "order_status_name",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "labs": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_order_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "lab_collect_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "lab_result_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "lab_order_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_order_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_value",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_value_numeric",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "reference_unit",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_specimen_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_specimen_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "lab_loinc_code",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "medication_admin_continuous": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_order_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "admin_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "med_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_group",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_route_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_route_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_dose",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "med_dose_unit",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mar_action_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mar_action_category",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "medication_admin_intermittent": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_order_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "admin_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "med_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_group",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_route_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_route_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_dose",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "med_dose_unit",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mar_action_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mar_action_category",
+          "dtype": "VARCHAR"
+        }
+      ],
+      "alias_of": "medication_admin_continuous"
+    },
+    "medication_orders": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_order_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "order_start_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "order_end_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "ordered_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "med_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_group",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_order_status_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_order_status_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_route_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_dose",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "med_dose_unit",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "med_frequency",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "prn",
+          "dtype": "BOOLEAN"
+        }
+      ]
+    },
+    "microbiology_culture": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "order_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "collect_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "result_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "fluid_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "fluid_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "method_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "method_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "organism_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "organism_group",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "microbiology_nonculture": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "result_dttm",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "collect_dttm",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "order_dttm",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "fluid_name",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "component_category",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "result_unit_category",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "result_category",
+          "dtype": "UNKNOWN"
+        }
+      ]
+    },
+    "microbiology_susceptibility": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "culture_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "antibiotic",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "sensitivity",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mic",
+          "dtype": "DOUBLE"
+        }
+      ]
+    },
+    "patient": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "patient_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "race_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "race_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "ethnicity_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "ethnicity_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "sex_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "sex_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "birth_date",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "death_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "language_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "language_category",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "patient_assessments": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "recorded_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "assessment_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "assessment_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "assessment_group",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "numerical_value",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "categorical_value",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "text_value",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "patient_procedures": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "procedure_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "procedure_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "diagnosis",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "start_dttm",
+          "dtype": "DATETIME"
+        }
+      ]
+    },
+    "position": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "recorded_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "position_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "position_category",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "provider": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "provider_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "start_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "stop_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "provider_role_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "provider_role_category",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "respiratory_support": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "recorded_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "device_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "device_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "device_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "vent_brand_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mode_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "mode_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "tracheostomy",
+          "dtype": "INT"
+        },
+        {
+          "name": "fio2_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "lpm_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "tidal_volume_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "resp_rate_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "pressure_control_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "pressure_support_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "flow_rate_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "peak_inspiratory_pressure_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "inspiratory_time_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "peep_set",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "tidal_volume_obs",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "resp_rate_obs",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "plateau_pressure_obs",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "peak_inspiratory_pressure_obs",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "peep_obs",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "minute_vent_obs",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "mean_airway_pressure_obs",
+          "dtype": "DOUBLE"
+        }
+      ]
+    },
+    "therapy_details": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "session_start_dttm",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "therapy_element_name",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "therapy_element_category",
+          "dtype": "UNKNOWN"
+        },
+        {
+          "name": "therapy_element_value",
+          "dtype": "UNKNOWN"
+        }
+      ]
+    },
+    "transfusion": {
+      "maturity": "concept",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "transfusion_start_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "transfusion_end_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "component_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "attribute_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "volume_transfused",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "volume_units",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "product_code",
+          "dtype": "VARCHAR"
+        }
+      ]
+    },
+    "vitals": {
+      "maturity": "beta",
+      "columns": [
+        {
+          "name": "hospitalization_id",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "recorded_dttm",
+          "dtype": "DATETIME"
+        },
+        {
+          "name": "vital_name",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "vital_category",
+          "dtype": "VARCHAR"
+        },
+        {
+          "name": "vital_value",
+          "dtype": "DOUBLE"
+        },
+        {
+          "name": "meas_site_name",
+          "dtype": "VARCHAR"
+        }
+      ]
+    }
+  }
+}

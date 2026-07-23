@@ -33,3 +33,6 @@ venv/
 
 # Harness-managed subagent worktrees (peers of this repo, never committed)
 .claude/worktrees/
+
+# clifpy secondary-gate scratch output
+/output/
