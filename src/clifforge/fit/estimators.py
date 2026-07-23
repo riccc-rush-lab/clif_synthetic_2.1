@@ -17,7 +17,9 @@ The estimators are deliberately model-light and inspectable:
 
 * transitions — the **embedded** (jump) chain over the organ-support ladder:
   self-transitions are removed, so the diagonal is zero and each row of the
-  emitted matrix sums to 1 over the *other* states.
+  emitted matrix sums to 1 over the *other* states plus an absorbing
+  ``discharge`` exit; the initial-state law is emitted alongside as
+  ``support_level_start_dist`` (both consumed by the U6 spine sampler).
 * sojourns — per-state dwell time, best parametric family chosen by AIC among
   exponential / gamma / lognormal / Weibull.
 * AR1 — per (vital, support-level) first-order autoregression on a fixed grid.
@@ -42,6 +44,7 @@ from clifforge.fit.cell_gate import SuppressionRecord, suppress
 _F64 = NDArray[np.float64]
 
 __all__ = [
+    "DISCHARGE_STATE",
     "EstimatorResult",
     "fit_categorical_marginals",
     "fit_continuous_marginals",
@@ -161,31 +164,79 @@ def _runs(state_timeline: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+#: absorbing target that ends a hospitalization; a run with no following run is
+#: a discharge (alive or dead — the terminal *outcome* is modelled separately by
+#: ``fit_outcome_rates``). Emitted as a competing-risk column in every transition
+#: row so the U6 spine sampler terminates naturally instead of running to horizon.
+DISCHARGE_STATE = "discharge"
+
+
 def fit_transitions(state_timeline: pl.DataFrame, *, min_n: int = 20) -> EstimatorResult:
     """Embedded (jump-chain) transition matrix over the support ladder (R2).
 
-    Counts observed ``from -> to`` jumps (``from != to`` by construction of the
-    run encoding), gates each ordered pair at ``min_n``, then row-normalizes the
-    surviving counts. The emitted matrix has a **zero diagonal** and each row
-    sums to 1 over reachable next-states (a row with no surviving out-transition
-    is omitted).
+    Three parameters are emitted, all gated at ``min_n`` and all aggregate-only:
+
+    * ``support_level_states`` — the sorted set of observed support levels.
+    * ``support_level_start_dist`` — the distribution of the **first** run's
+      support level per hospitalization; the U6 spine draws its initial state
+      from this (R15: the sampler must not invent an initial condition).
+    * ``support_level_transition_matrix`` — a nested ``{from: {to: prob}}`` map.
+      ``from -> to`` counts observed jumps (``from != to`` by run construction);
+      each row additionally carries a :data:`DISCHARGE_STATE` competing-risk
+      entry counting the runs at ``from`` that were **terminal** (the
+      hospitalization ended rather than jumping onward). The matrix has a **zero
+      diagonal**, and each row sums to 1 over its reachable next-states plus
+      discharge — so the trajectory always has an exit and terminates without a
+      horizon cap. ``discharge`` is absorbing; it has no sojourn and no outgoing
+      row.
     """
     runs = _runs(state_timeline)
-    nxt = pl.col("support_level").shift(-1).over("hospitalization_id")
-    pairs = (
-        runs.with_columns(nxt.alias("to_level"))
-        .drop_nulls("to_level")
-        .select(
-            pl.col("support_level").alias("from_level"),
-            pl.col("to_level").cast(pl.Int64),
-        )
-    )
-    pair_counts = pairs.group_by("from_level", "to_level").len().rename({"len": "n"})
 
-    counts = {
-        (int(r["from_level"]), int(r["to_level"])): int(r["n"])
-        for r in pair_counts.iter_rows(named=True)
+    # --- initial-state distribution (first run per hospitalization) -----------
+    first_levels = (
+        runs.sort("hospitalization_id", "run_idx")
+        .group_by("hospitalization_id")
+        .agg(pl.col("support_level").first().alias("start_level"))
+    )
+    start_counts = {
+        int(r["start_level"]): int(r["n"])
+        for r in first_levels.group_by("start_level")
+        .len()
+        .rename({"len": "n"})
+        .iter_rows(named=True)
     }
+    start_survived, start_audit = suppress(start_counts, start_counts, min_n=min_n)
+    start_total = sum(start_survived.values())
+    start_dist = (
+        {str(level): n / start_total for level, n in start_survived.items()}
+        if start_total > 0
+        else {}
+    )
+
+    # --- jumps + discharge competing risk -------------------------------------
+    nxt = pl.col("support_level").shift(-1).over("hospitalization_id")
+    with_next = runs.with_columns(nxt.alias("to_level"))
+    jump_counts = (
+        with_next.drop_nulls("to_level")
+        .group_by("support_level", "to_level")
+        .len()
+        .rename({"len": "n"})
+    )
+    discharge_counts = (
+        with_next.filter(pl.col("to_level").is_null())
+        .group_by("support_level")
+        .len()
+        .rename({"len": "n"})
+    )
+
+    # Cell key = (from_level:int, to:str) where ``to`` is a level string or
+    # DISCHARGE_STATE; gate every ordered pair (including the discharge column).
+    counts: dict[tuple[int, str], int] = {
+        (int(r["support_level"]), str(int(r["to_level"]))): int(r["n"])
+        for r in jump_counts.iter_rows(named=True)
+    }
+    for r in discharge_counts.iter_rows(named=True):
+        counts[(int(r["support_level"]), DISCHARGE_STATE)] = int(r["n"])
     survived, audit = suppress(counts, counts, min_n=min_n)
 
     # Row-normalize surviving counts into a nested {from: {to: prob}} matrix.
@@ -195,14 +246,15 @@ def fit_transitions(state_timeline: pl.DataFrame, *, min_n: int = 20) -> Estimat
     matrix: dict[str, dict[str, float]] = {}
     for (frm, to), n in survived.items():
         if row_totals[frm] > 0:
-            matrix.setdefault(str(frm), {})[str(to)] = n / row_totals[frm]
+            matrix.setdefault(str(frm), {})[to] = n / row_totals[frm]
 
-    states = sorted({lvl for pair in counts for lvl in pair})
+    states = sorted({frm for frm, _to in counts})
     params: dict[str, object] = {
         "support_level_states": states,
+        "support_level_start_dist": start_dist,
         "support_level_transition_matrix": matrix,
     }
-    return params, audit
+    return params, audit + start_audit
 
 
 def fit_sojourns(

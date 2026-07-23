@@ -17,6 +17,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit import run_fit
+from clifforge.fit.estimators import DISCHARGE_STATE
 from clifforge.fit.param_pack import ParamPack, scan_for_leakage
 from clifforge.fit.spine_state import SpineStateConfig
 
@@ -189,6 +190,14 @@ def test_spine_block_present(tmp_path: Path) -> None:
     for from_level, row in matrix.items():
         assert from_level not in row
         assert abs(sum(row.values()) - 1.0) < 1e-9
+
+    # The U6 spine draws its initial state and its exit from these params, so
+    # they must be present: a normalized start law and an absorbing discharge
+    # exit reachable from at least one level.
+    start_dist = params["support_level_start_dist"]
+    assert abs(sum(start_dist.values()) - 1.0) < 1e-9
+    assert any(DISCHARGE_STATE in row for row in matrix.values())
+    assert DISCHARGE_STATE not in matrix  # absorbing: never a from-state
 
     # The spine block must carry the outcome + flag params U6 samples from.
     marginal = params["outcome_marginal"]

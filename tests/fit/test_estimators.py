@@ -42,8 +42,30 @@ def test_transition_below_gate_suppressed() -> None:
     # Only 5 hospitalizations -> every transition pair has n=5 < 20 -> all gated.
     params, audit = estimators.fit_transitions(_cyclic_timeline(n_hosp=5))
     assert params["support_level_transition_matrix"] == {}
+    assert params["support_level_start_dist"] == {}
     assert audit  # suppression recorded
     assert all(r.fallback_kind == "none" for r in audit)
+
+
+def test_transition_rows_carry_absorbing_discharge_exit() -> None:
+    # Each hospitalization walks 0 -> 3 -> 4 -> 0 then discharges from level 0,
+    # so level 0's row must split between the onward jump and the discharge exit.
+    params, _ = estimators.fit_transitions(_cyclic_timeline())
+    matrix = params["support_level_transition_matrix"]
+    assert estimators.DISCHARGE_STATE in matrix["0"]
+    assert abs(matrix["0"]["3"] - 0.5) < 1e-9
+    assert abs(matrix["0"][estimators.DISCHARGE_STATE] - 0.5) < 1e-9
+    # ``discharge`` is absorbing: it never appears as a from-state (no outgoing row).
+    assert estimators.DISCHARGE_STATE not in matrix
+
+
+def test_start_dist_is_first_run_distribution() -> None:
+    # Every hospitalization starts at level 0, so the initial-state law is a
+    # point mass there — the U6 spine must not have to invent an initial state.
+    params, _ = estimators.fit_transitions(_cyclic_timeline())
+    start = params["support_level_start_dist"]
+    assert abs(sum(start.values()) - 1.0) < 1e-9
+    assert abs(start["0"] - 1.0) < 1e-9
 
 
 # --------------------------------------------------------------------------- #
