@@ -126,7 +126,7 @@ def test_split_spec_is_identifier_free(tmp_path: Path) -> None:
     assert "holdout_ids" not in split
 
 
-def test_field_source_audit_marks_present_columns_fitted(tmp_path: Path) -> None:
+def test_field_source_audit_labels_modeled_vs_unmodeled(tmp_path: Path) -> None:
     real_dir = tmp_path / "CLIF"
     out_dir = tmp_path / "pack"
     _write_corpus(real_dir)
@@ -136,7 +136,31 @@ def test_field_source_audit_marks_present_columns_fitted(tmp_path: Path) -> None
     patient_fields = {
         rec["column"]: rec["source"] for rec in pack.manifest["field_sources"]["patient"]
     }
-    assert patient_fields["sex_category"] == "fitted"
+    # A column with a fitted marginal is "modeled" — never mislabeled "fitted".
+    assert patient_fields["sex_category"] == "modeled"
+    assert "fitted" not in set(patient_fields.values())
+    # A column absent from the fabricated source is prior-driven, not modeled.
+    assert patient_fields["birth_date"] == "prior"
+
+
+def test_field_source_audit_never_calls_unmodeled_present_column_modeled(tmp_path: Path) -> None:
+    # A source column present but not fit (e.g. a geographic identifier) must be
+    # "source_present", not "modeled" — the plan §272 governance invariant.
+    real_dir = tmp_path / "CLIF"
+    out_dir = tmp_path / "pack"
+    _write_corpus(real_dir)
+    # Add a present-but-unmodeled CLIF patient column (a name field U5 never fits).
+    patients = pl.read_parquet(real_dir / "clif_patient.parquet").with_columns(
+        pl.lit("Male").alias("sex_name")
+    )
+    patients.write_parquet(real_dir / "clif_patient.parquet")
+    run_fit.run_fit(real_dir, out_dir)
+
+    pack = ParamPack.load(out_dir)
+    patient_fields = {
+        rec["column"]: rec["source"] for rec in pack.manifest["field_sources"]["patient"]
+    }
+    assert patient_fields["sex_name"] == "source_present"
 
 
 def test_split_is_reproducible(tmp_path: Path) -> None:
@@ -159,8 +183,34 @@ def test_spine_block_present(tmp_path: Path) -> None:
 
     pack = ParamPack.load(out_dir)
     assert "spine" in pack.tables
-    matrix = pack.tables["spine"]["params"]["support_level_transition_matrix"]
+    params = pack.tables["spine"]["params"]
+    matrix = params["support_level_transition_matrix"]
     # Every emitted transition row is stochastic with a zero diagonal.
     for from_level, row in matrix.items():
         assert from_level not in row
         assert abs(sum(row.values()) - 1.0) < 1e-9
+
+    # The spine block must carry the outcome + flag params U6 samples from.
+    marginal = params["outcome_marginal"]
+    assert abs(marginal["alive"] + marginal["expired"] - 1.0) < 1e-9
+    assert "expired_rate_by_peak_level" in params
+    flags = params["flag_prevalence_by_level"]
+    # Every emitted flag prevalence is a probability in [0, 1].
+    for level_prev in flags.values():
+        for prob in level_prev.values():
+            assert 0.0 <= prob <= 1.0
+
+
+def test_suppression_audit_is_honest_when_nothing_suppressed(tmp_path: Path) -> None:
+    # A clean fit reports all-zero below-floor counts — never a misleading
+    # "0 cells considered" that reads as "the gate never ran".
+    real_dir = tmp_path / "CLIF"
+    out_dir = tmp_path / "pack"
+    _write_corpus(real_dir)
+    run_fit.run_fit(real_dir, out_dir)
+
+    pack = ParamPack.load(out_dir)
+    overall = pack.manifest["suppression_audit"]["overall"]
+    assert "cells_considered" not in overall
+    assert overall["cells_below_min_n"] >= 0
+    assert "note" in overall

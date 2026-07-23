@@ -47,6 +47,8 @@ __all__ = [
     "fit_continuous_marginals",
     "fit_transitions",
     "fit_sojourns",
+    "fit_outcome_rates",
+    "fit_flag_prevalence",
     "fit_ar1_by_state",
     "fit_lab_copula",
     "fit_infusion_hazards",
@@ -273,6 +275,106 @@ def _best_sojourn_family(durations: _F64) -> dict[str, object]:
         "aic": None,
         "mean_hours": round(float(np.mean(durations)), 4),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Spine attributes: terminal outcome + organ-failure flags
+# --------------------------------------------------------------------------- #
+def fit_outcome_rates(
+    state_timeline: pl.DataFrame, outcomes: pl.DataFrame, *, min_n: int = 20
+) -> EstimatorResult:
+    """Terminal-outcome marginal + expired rate by peak support level (R2).
+
+    The spine sampler (U6) draws each hospitalization's terminal outcome
+    (survive/expire) from pack params, coupled to acuity. This emits both the
+    overall outcome marginal and ``P(expired | peak support level reached)`` so
+    the coupling is empirical, not assumed. ``outcomes`` carries
+    ``hospitalization_id`` and ``outcome`` (``"alive"``/``"expired"``). The
+    overall marginal is gated on the hospitalization count; each peak-level cell
+    is gated on the hospitalizations that peaked at that level.
+    """
+    peak = state_timeline.group_by("hospitalization_id").agg(
+        pl.col("support_level").max().alias("peak_level")
+    )
+    joined = peak.join(outcomes, on="hospitalization_id", how="inner")
+
+    params: dict[str, object] = {}
+    audit: list[SuppressionRecord] = []
+
+    # Overall outcome marginal, gated as a single cell.
+    n_total = joined.height
+    n_expired = int(joined.filter(pl.col("outcome") == "expired").height)
+    marginal = {"expired": n_expired / n_total, "alive": 1.0 - n_expired / n_total}
+    surv_marg, marg_audit = suppress({"outcome": n_total}, {"outcome": marginal}, min_n=min_n)
+    audit.extend(
+        SuppressionRecord(cell=("outcome_marginal", r.cell), n=r.n, fallback_kind=r.fallback_kind)
+        for r in marg_audit
+    )
+    if "outcome" in surv_marg:
+        params["outcome_marginal"] = {
+            k: round(float(v), 6) for k, v in surv_marg["outcome"].items()
+        }
+
+    # Expired rate conditioned on peak acuity, one gated cell per peak level.
+    by_level = joined.group_by("peak_level").agg(
+        pl.len().alias("n"),
+        (pl.col("outcome") == "expired").sum().alias("n_expired"),
+    )
+    counts = {int(r["peak_level"]): int(r["n"]) for r in by_level.iter_rows(named=True)}
+    rates = {
+        int(r["peak_level"]): {
+            "expired_rate": round(int(r["n_expired"]) / int(r["n"]), 6),
+            "n_hospitalizations": int(r["n"]),
+        }
+        for r in by_level.iter_rows(named=True)
+    }
+    survived, level_audit = suppress(counts, rates, min_n=min_n)
+    audit.extend(
+        SuppressionRecord(
+            cell=("expired_rate_by_peak_level", r.cell), n=r.n, fallback_kind=r.fallback_kind
+        )
+        for r in level_audit
+    )
+    if survived:
+        params["expired_rate_by_peak_level"] = {
+            str(level): rate for level, rate in survived.items()
+        }
+    return params, audit
+
+
+def fit_flag_prevalence(state_timeline: pl.DataFrame, *, min_n: int = 20) -> EstimatorResult:
+    """Per-support-level prevalence of each organ-failure flag (R2).
+
+    The spine sampler (U6) draws organ-failure flags coupled to acuity from pack
+    params; this emits ``P(flag | support level)`` for each of the four flags
+    (respiratory / cardiovascular / renal / neuro) over the intervals observed
+    at each level. Each level is gated on its interval count.
+    """
+    flags = ("resp_flag", "cv_flag", "renal_flag", "neuro_flag")
+    present = [f for f in flags if f in state_timeline.columns]
+    if not present:
+        return {}, []
+
+    by_level = state_timeline.group_by("support_level").agg(
+        pl.len().alias("n"),
+        *[pl.col(f).sum().alias(f) for f in present],
+    )
+    counts = {int(r["support_level"]): int(r["n"]) for r in by_level.iter_rows(named=True)}
+    prevalence = {
+        int(r["support_level"]): {f: round(int(r[f]) / int(r["n"]), 6) for f in present}
+        for r in by_level.iter_rows(named=True)
+    }
+    survived, audit = suppress(counts, prevalence, min_n=min_n)
+    audit = [
+        SuppressionRecord(
+            cell=("flag_prevalence_by_level", r.cell), n=r.n, fallback_kind=r.fallback_kind
+        )
+        for r in audit
+    ]
+    params: dict[str, object] = {}
+    if survived:
+        params["flag_prevalence_by_level"] = {str(level): prev for level, prev in survived.items()}
+    return params, audit
 
 
 # --------------------------------------------------------------------------- #
