@@ -30,3 +30,6 @@ venv/
 .idea/
 .vscode/
 *.swp
+
+# Harness-managed subagent worktrees (peers of this repo, never committed)
+.claude/worktrees/

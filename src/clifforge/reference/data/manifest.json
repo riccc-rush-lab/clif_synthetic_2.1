@@ -1,0 +1,90 @@
+{
+  "clif_version": "2.1.0",
+  "source_repo": "https://github.com/Common-Longitudinal-ICU-data-Format/CLIF",
+  "source_commit": "966bc5fb0dc0f5664405f833568886ad850d869d",
+  "source_ref": "v2.1.0",
+  "retrieved_at": "2026-07-23",
+  "note": "Targets CLIF 2.1.0 per the plan. Newer releases (v2.1.1, v2.2.0, v3.0.0) exist upstream and can be diffed against source_commit.",
+  "mcide": {
+    "adt": {
+      "hospital_type_category": "mcide/adt/clif_adt_hospital_type.csv",
+      "location_category": "mcide/adt/clif_adt_location_categories.csv",
+      "location_type": "mcide/adt/clif_adt_location_type.csv"
+    },
+    "code_status": {
+      "code_status_category": "mcide/code_status/clif_code_status_categories.csv"
+    },
+    "crrt_therapy": {
+      "crrt_mode_category": "mcide/crrt_therapy/clif_crrt_therapy_mode_categories.csv"
+    },
+    "hospitalization": {
+      "admission_type_category": "mcide/hospitalization/clif_hospitalization_admission_type_categories.csv",
+      "discharge_category": "mcide/hospitalization/clif_hospitalization_discharge_categories.csv"
+    },
+    "invasive_hemodynamics": {
+      "measure_category": "mcide/invasive_hemodynamics/clif_invasive_hemodynamics_measure_categories.csv"
+    },
+    "key_icu_orders": {
+      "order_category": "mcide/key_icu_orders/clif_key_icu_orders_categories.csv"
+    },
+    "labs": {
+      "lab_category": "mcide/labs/clif_lab_categories.csv",
+      "lab_order_category": "mcide/labs/clif_labs_order_categories.csv"
+    },
+    "medication_admin_continuous": {
+      "mar_action_category": "mcide/medication_admin_continuous/clif_medication_admin_continuous_action_categories.csv",
+      "med_category": "mcide/medication_admin_continuous/clif_medication_admin_continuous_med_categories.csv",
+      "med_route_category": "mcide/medication_admin_continuous/clif_medication_admin_continuous_med_route_categories.csv"
+    },
+    "medication_admin_intermittent": {
+      "mar_action_category": "mcide/medication_admin_intermittent/clif_medication_admin_intermittent_action_categories.csv",
+      "med_category": "mcide/medication_admin_intermittent/clif_medication_admin_intermittent_med_categories.csv",
+      "med_route_category": "mcide/medication_admin_intermittent/clif_medication_admin_intermittent_med_route_categories.csv"
+    },
+    "microbiology_culture": {
+      "fluid_category": "mcide/microbiology_culture/clif_microbiology_culture_fluid_category.csv",
+      "method_category": "mcide/microbiology_culture/clif_microbiology_culture_method_categories.csv",
+      "organism_category": "mcide/microbiology_culture/clif_microbiology_culture_organism_categories.csv",
+      "organism_group": "mcide/microbiology_culture/clif_microbiology_culture_organism_groups.csv"
+    },
+    "microbiology_nonculture": {
+      "fluid_category": "mcide/microbiology_nonculture/clif_microbiology_nonculture_fluid_category.csv",
+      "method_category": "mcide/microbiology_nonculture/clif_microbiology_nonculture_method_category.csv",
+      "organism_category": "mcide/microbiology_nonculture/clif_microbiology_nonculture_organism_category.csv",
+      "result_category": "mcide/microbiology_nonculture/clif_microbiology_nonculture_result_category.csv"
+    },
+    "microbiology_susceptibility": {
+      "antimicrobial_category": "mcide/microbiology_susceptibility/clif_microbiology_susceptibility_antibiotics_category.csv",
+      "susceptibility_category": "mcide/microbiology_susceptibility/clif_microbiology_susceptibility_category.csv"
+    },
+    "patient": {
+      "ethnicity_category": "mcide/patient/clif_patient_ethinicity_categories.csv",
+      "language_category": "mcide/patient/clif_patient_language_categories.csv",
+      "race_category": "mcide/patient/clif_patient_race_categories.csv",
+      "sex_category": "mcide/patient/clif_patient_sex_categories.csv"
+    },
+    "patient_assessments": {
+      "assessment_category": "mcide/patient_assessments/clif_patient_assessment_categories.csv"
+    },
+    "patient_procedures": {
+      "procedure_code_format": "mcide/patient_procedures/clif_patient_procedure_codes.csv"
+    },
+    "position": {
+      "position_category": "mcide/position/clif_position_categories.csv"
+    },
+    "respiratory_support": {
+      "device_category": "mcide/respiratory_support/clif_respiratory_support_device_categories.csv",
+      "mode_category": "mcide/respiratory_support/clif_respiratory_support_mode_categories.csv"
+    },
+    "vitals": {
+      "vital_category": "mcide/vitals/clif_vitals_categories.csv"
+    }
+  },
+  "outliers": {
+    "crrt_therapy": "outliers/outlier_thresholds_crrt_modes.csv",
+    "ecmo_mcs": "outliers/outlier_thresholds_ecmo_mcs.csv",
+    "labs": "outliers/outlier_thresholds_labs.csv",
+    "respiratory_support": "outliers/outlier_thresholds_respiratory_support.csv",
+    "vitals": "outliers/outlier_thresholds_adults_vitals.csv"
+  }
+}
