@@ -63,9 +63,8 @@ def column_agreement(table: str, external_columns: set[str]) -> AgreementResult:
     shared = tuple(sorted(schema_cols & external_columns))
     external_only = tuple(sorted(external_columns - schema_cols))
     agrees = not missing
-    note = (
-        f"{table!r}: {len(shared)} shared column(s)"
-        + (f"; missing required {list(missing)}" if missing else "; all required columns present")
+    note = f"{table!r}: {len(shared)} shared column(s)" + (
+        f"; missing required {list(missing)}" if missing else "; all required columns present"
     )
     return AgreementResult(
         table=table,

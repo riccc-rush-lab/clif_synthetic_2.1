@@ -26,9 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="clif-forge",
         description="CLIFForge — generate fully synthetic CLIF 2.1 ICU datasets.",
     )
-    parser.add_argument(
-        "--version", action="version", version=f"clif-forge {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"clif-forge {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="{generate,fit}")
 
     generate = sub.add_parser(
@@ -47,9 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     fit = sub.add_parser(
         "fit", help="Fit a parameter pack over real CLIF-MIMIC (one-time, requires real data)."
     )
-    fit.add_argument(
-        "--real-dir", required=True, help="Directory of real CLIF parquet files."
-    )
+    fit.add_argument("--real-dir", required=True, help="Directory of real CLIF parquet files.")
     fit.add_argument(
         "--out", required=True, help="Output directory for the versioned parameter pack."
     )

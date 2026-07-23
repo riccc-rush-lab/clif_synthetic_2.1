@@ -142,8 +142,7 @@ def mcide_fields(table: str) -> list[str]:
     mcide = _manifest()["mcide"]
     if table not in mcide:
         raise ReferenceDataError(
-            f"No mCIDE reference data for table {table!r}. "
-            f"Known tables: {', '.join(sorted(mcide))}"
+            f"No mCIDE reference data for table {table!r}. Known tables: {', '.join(sorted(mcide))}"
         )
     return sorted(mcide[table].keys())
 
@@ -157,8 +156,7 @@ def categories(table: str, field: str) -> list[str]:
     mcide = _manifest()["mcide"]
     if table not in mcide:
         raise ReferenceDataError(
-            f"No mCIDE reference data for table {table!r}. "
-            f"Known tables: {', '.join(sorted(mcide))}"
+            f"No mCIDE reference data for table {table!r}. Known tables: {', '.join(sorted(mcide))}"
         )
     fields = mcide[table]
     if field not in fields:
@@ -207,9 +205,7 @@ def bounds(table: str, field: str) -> tuple[float, float]:
                 lower = _parse_limit(row.get("lower_limit"), default=float("-inf"))
                 upper = _parse_limit(row.get("upper_limit"), default=float("inf"))
                 return (lower, upper)
-    raise ReferenceDataError(
-        f"No outlier bounds for {field!r} in table {table!r} ({rel_path})."
-    )
+    raise ReferenceDataError(f"No outlier bounds for {field!r} in table {table!r} ({rel_path}).")
 
 
 def outlier_keys(table: str) -> list[str]:
@@ -230,9 +226,7 @@ def outlier_keys(table: str) -> list[str]:
             raise ReferenceDataError(f"Outlier file has no header: {path}")
         key_col = fieldnames[0]
         return [
-            (row.get(key_col) or "").strip()
-            for row in reader
-            if (row.get(key_col) or "").strip()
+            (row.get(key_col) or "").strip() for row in reader if (row.get(key_col) or "").strip()
         ]
 
 

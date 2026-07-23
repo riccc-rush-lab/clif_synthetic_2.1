@@ -188,9 +188,7 @@ def read_pack(pack_dir: str | Path) -> ParamPack:
 def _validate_manifest(manifest: Mapping[str, Any]) -> None:
     missing = _REQUIRED_MANIFEST_KEYS - manifest.keys()
     if missing:
-        raise ValueError(
-            f"manifest is missing required key(s): {sorted(missing)}"
-        )
+        raise ValueError(f"manifest is missing required key(s): {sorted(missing)}")
 
 
 def _check_version_compatible(pack_version: str) -> None:

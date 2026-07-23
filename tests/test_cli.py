@@ -29,9 +29,7 @@ def test_generate_requires_flags() -> None:
 
 def test_generate_parses_flags() -> None:
     parser = build_parser()
-    args = parser.parse_args(
-        ["generate", "--n-patients", "100", "--seed", "42", "--out", "./out"]
-    )
+    args = parser.parse_args(["generate", "--n-patients", "100", "--seed", "42", "--out", "./out"])
     assert args.command == "generate"
     assert args.n_patients == 100
     assert args.seed == 42

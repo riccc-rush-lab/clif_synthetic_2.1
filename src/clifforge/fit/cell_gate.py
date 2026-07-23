@@ -99,8 +99,6 @@ def suppress(
             continue
 
         # No fallback available: the cell is not emitted at all (R2).
-        audit.append(
-            SuppressionRecord(cell=cell, n=n, fallback_kind="none", fallback_source=None)
-        )
+        audit.append(SuppressionRecord(cell=cell, n=n, fallback_kind="none", fallback_source=None))
 
     return surviving, audit

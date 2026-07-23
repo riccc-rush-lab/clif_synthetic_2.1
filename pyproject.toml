@@ -64,10 +64,23 @@ files = ["src"]
 module = ["clifpy.*"]
 ignore_missing_imports = true
 
+# scipy ships no bundled stubs (scipy-stubs is a separate optional package we
+# do not depend on); the fit estimators use scipy.stats only for MLE/rank stats.
+[[tool.mypy.overrides]]
+module = ["scipy.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # clifpy's validator internals emit polars streaming-deprecation warnings we can't
 # fix upstream; silence just those so the conformance suite output stays readable.
 filterwarnings = [
     "ignore:the `streaming` parameter was deprecated:DeprecationWarning",
+    # scipy's MLE for gamma/lognorm/weibull emits RuntimeWarnings on degenerate
+    # (near-identical) inputs; the sojourn estimator guards with isfinite() and
+    # falls back, so these are noise on tiny fabricated fixtures, not defects.
+    "ignore::RuntimeWarning:scipy.stats._continuous_distns",
+    # polars join_asof can't verify pre-sortedness when 'by' groups are given;
+    # the AR1 estimator sorts explicitly before the as-of join.
+    "ignore:Sortedness of columns cannot be checked:UserWarning",
 ]
