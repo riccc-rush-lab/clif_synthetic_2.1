@@ -865,6 +865,8 @@ dev = [
 ]
 eval = [
     { name = "lightgbm" },
+    { name = "pandas" },
+    { name = "scikit-learn" },
     { name = "sdmetrics" },
 ]
 privacy = [
@@ -878,10 +880,12 @@ requires-dist = [
     { name = "lightgbm", marker = "extra == 'eval'", specifier = ">=4.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "pandas", marker = "extra == 'eval'", specifier = ">=2.0" },
     { name = "pandera", extras = ["polars"], specifier = ">=0.20" },
     { name = "polars", specifier = ">=1.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "scikit-learn", marker = "extra == 'eval'", specifier = ">=1.3" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "sdmetrics", marker = "extra == 'eval'", specifier = ">=0.14" },
     { name = "synthcity", marker = "extra == 'privacy'", specifier = ">=0.2.11" },
