@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument(
         "--out", required=True, help="Output directory for the generated dataset."
     )
+    generate.add_argument(
+        "--pack",
+        default="data/param_packs/mimic",
+        help="Directory of the parameter pack to sample from.",
+    )
 
     fit = sub.add_parser(
         "fit", help="Fit a parameter pack over real CLIF-MIMIC (one-time, requires real data)."
@@ -53,21 +58,51 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_generate(args: argparse.Namespace) -> int:
+    """Generate + gate + write a synthetic dataset; nonzero on any failure (R25)."""
+    from clifforge.conformance.gate import ConformanceError
+    from clifforge.fit.param_pack import ParamPack
+    from clifforge.generate.orchestrator import generate_dataset, write_dataset
+
+    try:
+        pack = ParamPack.load(args.pack)
+        dataset = generate_dataset(pack, n_patients=args.n_patients, seed=args.seed)
+        written = write_dataset(dataset, args.out)
+    except ConformanceError as exc:
+        print(f"clif-forge generate: conformance failure -> {exc}", file=sys.stderr)
+        return 1
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"clif-forge generate: {exc}", file=sys.stderr)
+        return 1
+    print(f"clif-forge generate: wrote {len(written)} files to {args.out}")
+    return 0
+
+
+def _run_fit(args: argparse.Namespace) -> int:
+    """Fit a parameter pack over real CLIF-MIMIC (U5)."""
+    from clifforge.fit.run_fit import run_fit
+
+    try:
+        run_fit(args.real_dir, args.out)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"clif-forge fit: {exc}", file=sys.stderr)
+        return 1
+    print(f"clif-forge fit: wrote parameter pack to {args.out}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point. Returns a process exit code (0 = success)."""
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command is None:
-        parser.print_help()
-        return 0
+    if args.command == "generate":
+        return _run_generate(args)
+    if args.command == "fit":
+        return _run_fit(args)
 
-    # Real implementations land in U21 (generate) and U5 (fit).
-    print(
-        f"clif-forge {args.command}: not yet implemented (scaffold stage).",
-        file=sys.stderr,
-    )
-    return 1
+    parser.print_help()
+    return 0
 
 
 if __name__ == "__main__":
