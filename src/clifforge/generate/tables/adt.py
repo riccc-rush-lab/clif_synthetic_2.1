@@ -33,14 +33,11 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["ICU_MIN_SUPPORT_LEVEL", "AdtMovement", "adt_frame", "icu_windows", "sample_adt"]
 
-#: Minimum support level treated as ICU-level care (2 = high-flow O2 / NIV). At or
-#: above this the interval is an ``icu`` location; below it (room air, low-flow O2)
-#: it is ``ward``.
-ICU_MIN_SUPPORT_LEVEL = 2
 
 #: MIMIC-appropriate constants for fields with no fitted distribution (R15).
 _HOSPITAL_TYPE = "academic"
@@ -62,14 +59,6 @@ class AdtMovement:
     location_name: str
     location_category: str
     location_type: str | None
-
-
-def _grid_step_hours(pack: ParamPack) -> float:
-    """Hours per spine interval (from the pack's spine block; default 1.0)."""
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
 
 
 def _location_segments(support_level: list[int]) -> list[tuple[str, int]]:
@@ -103,7 +92,7 @@ def sample_adt(
     """
     del rng  # deterministic from the spine; accepted for signature uniformity
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    grid_step = _grid_step_hours(pack)
+    grid_step = grid_step_hours(pack)
 
     movements: list[AdtMovement] = []
     cursor = admit_dttm

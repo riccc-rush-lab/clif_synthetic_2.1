@@ -32,6 +32,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import grid_step_hours
 from clifforge.generate.sampling import categorical
 from clifforge.generate.spine import SpineFrame
 
@@ -84,15 +85,6 @@ def _hospitalization_params(pack: ParamPack) -> dict[str, dict[str, float]]:
     return params
 
 
-def _grid_step_hours(pack: ParamPack) -> float:
-    """Hours per spine interval — needed to turn ``n_intervals`` into a real LOS."""
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    state_model = block["params"].get("state_model", {})
-    return float(state_model.get("grid_step_hours", 1.0))
-
-
 def sample_hospitalization(
     spine: SpineFrame,
     pack: ParamPack,
@@ -109,7 +101,7 @@ def sample_hospitalization(
     ``rng`` first, then (survivors only) ``discharge_category``.
     """
     params = _hospitalization_params(pack)
-    los_hours = spine.n_intervals * _grid_step_hours(pack)
+    los_hours = spine.n_intervals * grid_step_hours(pack)
     discharge_dttm = admit_dttm + timedelta(hours=los_hours)
 
     admission_type = categorical(params["admission_type_category_marginal"], rng)

@@ -10,7 +10,7 @@ what keeps the AR(1) autocorrelation faithful.
 
 The continuous walk runs on every interval; observed rows are then **thinned** to
 a realistic irregular cadence that is denser inside ICU intervals (acuity
-``>= _ICU_MIN_SUPPORT_LEVEL``, the same threshold the adt generator uses) and
+``>= ICU_MIN_SUPPORT_LEVEL``, the same threshold the adt generator uses) and
 sparser on the ward, with sub-interval jitter so timestamps are not pinned to
 grid boundaries. Every emitted value is clamped into the consortium outlier
 bounds (R9, ``reference.bounds``).
@@ -37,6 +37,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 from clifforge.reference import bounds
 
@@ -47,9 +48,6 @@ __all__ = ["VITALS", "VitalObservation", "sample_vitals", "vitals_frame"]
 #: by U5, so they are omitted rather than fabricated (R15).
 VITALS = ("heart_rate", "sbp", "dbp", "map", "respiratory_rate", "spo2", "temp_c")
 
-#: At or above this support level an interval is ICU-level care (matches the adt
-#: generator); vitals are recorded more densely there.
-_ICU_MIN_SUPPORT_LEVEL = 2
 
 #: Per-interval probability that a vital is observed. Un-fitted cadence heuristics
 #: (like the adt hospital constants): dense but not certain in the ICU, sparse on
@@ -78,14 +76,6 @@ def _vitals_params(pack: ParamPack) -> dict[str, Any]:
         raise ValueError("parameter pack has no fitted 'vitals' block to sample from")
     params: dict[str, Any] = block["params"]
     return params
-
-
-def _grid_step_hours(pack: ParamPack) -> float:
-    """Hours per spine interval — the grid the AR(1) params are valid on."""
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
 
 
 def _state_params(by_state: dict[str, dict[str, float]], level: int) -> dict[str, float]:
@@ -119,7 +109,7 @@ def sample_vitals(
     outlier bounds. ``hospitalization_id`` defaults to the spine's own id.
     """
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    grid_step = _grid_step_hours(pack)
+    grid_step = grid_step_hours(pack)
     params = _vitals_params(pack)
 
     observations: list[VitalObservation] = []
@@ -140,7 +130,7 @@ def sample_vitals(
                 value = mean + phi * (value - mean) + sigma * float(rng.standard_normal())
             value = min(max(value, lower), upper)  # clamp into outlier bounds (R9)
 
-            is_icu = level >= _ICU_MIN_SUPPORT_LEVEL
+            is_icu = level >= ICU_MIN_SUPPORT_LEVEL
             emit_prob = _EMIT_PROB_ICU if is_icu else _EMIT_PROB_WARD
             if rng.random() < emit_prob:
                 jitter = rng.random() * grid_step  # sub-interval, stays within LOS

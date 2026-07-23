@@ -41,13 +41,12 @@ import numpy.typing as npt
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 from clifforge.reference import bounds
 
 __all__ = ["LabObservation", "labs_frame", "sample_labs"]
 
-#: At or above this support level an interval is ICU-level care (matches adt/vitals).
-_ICU_MIN_SUPPORT_LEVEL = 2
 
 #: Target spacing between lab panels within ICU time (labs are ~daily in the ICU).
 _LAB_PANEL_INTERVAL_HOURS = 24.0
@@ -82,13 +81,6 @@ def _labs_params(pack: ParamPack) -> dict[str, Any]:
     return params
 
 
-def _grid_step_hours(pack: ParamPack) -> float:
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
-
-
 def _cholesky(correlation: list[list[float]]) -> npt.NDArray[np.float64]:
     """Cholesky factor of the copula correlation, jittered onto the PD cone.
 
@@ -110,7 +102,7 @@ def _panel_intervals(support_level: list[int], grid_step: float) -> list[int]:
     panels: list[int] = []
     last: int | None = None
     for idx, level in enumerate(support_level):
-        if level < _ICU_MIN_SUPPORT_LEVEL:
+        if level < ICU_MIN_SUPPORT_LEVEL:
             continue
         if last is None or (idx - last) * grid_step >= _LAB_PANEL_INTERVAL_HOURS:
             panels.append(idx)
@@ -148,7 +140,7 @@ def sample_labs(
     marginals: dict[str, dict[str, float]] = params["lab_marginals"]
     presence: dict[str, float] = params["lab_presence"]
     chol = _cholesky(params["lab_correlation"])
-    grid_step = _grid_step_hours(pack)
+    grid_step = grid_step_hours(pack)
     n = len(order)
 
     # (1) present-set for the whole stay — one vector draw, matching the fit's

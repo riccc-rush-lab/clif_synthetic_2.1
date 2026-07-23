@@ -23,6 +23,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = [
@@ -60,13 +61,6 @@ class MedIntermittentRow:
     mar_action_category: str
 
 
-def _grid_step_hours(pack: ParamPack) -> float:
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
-
-
 def sample_medication_admin_intermittent(
     spine: SpineFrame,
     pack: ParamPack,
@@ -77,7 +71,7 @@ def sample_medication_admin_intermittent(
 ) -> list[MedIntermittentRow]:
     """Emit one hospitalization's discrete med administrations (R11, R22)."""
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    los_hours = spine.n_intervals * _grid_step_hours(pack)
+    los_hours = spine.n_intervals * grid_step_hours(pack)
 
     if rng.random() >= _ABX_PROB:
         return []  # not on antibiotics this stay

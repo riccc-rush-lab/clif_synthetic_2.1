@@ -30,6 +30,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import IMV_MIN_SUPPORT_LEVEL, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = [
@@ -38,7 +39,6 @@ __all__ = [
     "sample_medication_admin_continuous",
 ]
 
-_IMV_MIN_SUPPORT_LEVEL = 3
 _DOSE_UNIT = "mcg/kg/min"
 _ROUTE = "iv"
 #: (med_category, documented rate range) for the two spine-coupled infusions.
@@ -66,13 +66,6 @@ class MedAdminRow:
     med_dose: float
     med_dose_unit: str
     mar_action_category: str
-
-
-def _grid_step_hours(pack: ParamPack) -> float:
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
 
 
 def _stop_hazard(pack: ParamPack, med: str) -> float:
@@ -138,11 +131,11 @@ def sample_medication_admin_continuous(
 ) -> list[MedAdminRow]:
     """Emit one hospitalization's continuous-med rows (R11, AE3, R22)."""
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    grid_step = _grid_step_hours(pack)
+    grid_step = grid_step_hours(pack)
     order_seq = iter(range(10**6))
 
     vaso_active = list(spine.cv_flag)
-    sed_active = [level >= _IMV_MIN_SUPPORT_LEVEL for level in spine.support_level]
+    sed_active = [level >= IMV_MIN_SUPPORT_LEVEL for level in spine.support_level]
 
     rows = _infusion_rows(
         hid, _VASOPRESSOR, vaso_active, pack, rng, admit_dttm, grid_step, order_seq

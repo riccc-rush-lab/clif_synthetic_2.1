@@ -37,6 +37,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import IMV_MIN_SUPPORT_LEVEL, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = [
@@ -46,8 +47,6 @@ __all__ = [
     "sample_respiratory_support",
 ]
 
-#: Support level at/above which the interval is invasive ventilation (IMV).
-_IMV_MIN_SUPPORT_LEVEL = 3
 #: Sustained consecutive IMV intervals after which a tracheostomy is placed and
 #: latches on (documented heuristic; the pack does not fit trach timing).
 _TRACH_MIN_IMV_INTERVALS = 72
@@ -96,16 +95,9 @@ class RespiratorySupportRow:
     set_values: dict[str, float]  # only the device's matrix fields, all in-bounds
 
 
-def _grid_step_hours(pack: ParamPack) -> float:
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
-
-
 def _device_for(level: int, resp_failure: bool) -> str:
     """Base device for an interval from acuity, escalated by respiratory failure."""
-    if level >= _IMV_MIN_SUPPORT_LEVEL:
+    if level >= IMV_MIN_SUPPORT_LEVEL:
         return "IMV"
     if level == 2:
         return "IMV" if resp_failure else "High Flow NC"  # severe-hypoxemia escalation
@@ -139,7 +131,7 @@ def sample_respiratory_support(
 ) -> list[RespiratorySupportRow]:
     """Emit one hospitalization's respiratory-support rows (R10, AE1, AE2, R22)."""
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    grid_step = _grid_step_hours(pack)
+    grid_step = grid_step_hours(pack)
     if not spine.support_level:
         return []  # empty spine -> no device segments (match the sibling generators)
 

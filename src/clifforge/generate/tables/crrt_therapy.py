@@ -22,6 +22,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["CrrtRow", "crrt_therapy_frame", "sample_crrt_therapy"]
@@ -47,13 +48,6 @@ class CrrtRow:
     ultrafiltration_out: float
 
 
-def _grid_step_hours(pack: ParamPack) -> float:
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
-
-
 def sample_crrt_therapy(
     spine: SpineFrame,
     pack: ParamPack,
@@ -64,7 +58,7 @@ def sample_crrt_therapy(
 ) -> list[CrrtRow]:
     """Emit one hospitalization's CRRT rows during renal-failure windows (R12, R22)."""
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    grid_step = _grid_step_hours(pack)
+    grid_step = grid_step_hours(pack)
     device_id = f"{hid}-CRRT"
 
     rows: list[CrrtRow] = []

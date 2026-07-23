@@ -22,12 +22,11 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, IMV_MIN_SUPPORT_LEVEL, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["PositionRow", "position_frame", "sample_position"]
 
-_ICU_MIN_SUPPORT_LEVEL = 2
-_SEVERE_HYPOXEMIA_MIN_SUPPORT_LEVEL = 3  # proning is done for intubated ARDS
 _POSITION_INTERVAL_HOURS = 6.0  # positioning charted a few times a day
 
 #: Documented prone probabilities per position check (un-fitted care constants).
@@ -47,19 +46,12 @@ class PositionRow:
     position_category: str
 
 
-def _grid_step_hours(pack: ParamPack) -> float:
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
-
-
 def _position_intervals(support_level: list[int], grid_step: float) -> list[int]:
     """ICU interval indices at which position is charted (~every few hours)."""
     intervals: list[int] = []
     last: int | None = None
     for idx, level in enumerate(support_level):
-        if level < _ICU_MIN_SUPPORT_LEVEL:
+        if level < ICU_MIN_SUPPORT_LEVEL:
             continue
         if last is None or (idx - last) * grid_step >= _POSITION_INTERVAL_HOURS:
             intervals.append(idx)
@@ -77,13 +69,11 @@ def sample_position(
 ) -> list[PositionRow]:
     """Emit one hospitalization's position events (R12, R22)."""
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    grid_step = _grid_step_hours(pack)
+    grid_step = grid_step_hours(pack)
 
     rows: list[PositionRow] = []
     for idx in _position_intervals(spine.support_level, grid_step):
-        severe = (
-            spine.resp_flag[idx] and spine.support_level[idx] >= _SEVERE_HYPOXEMIA_MIN_SUPPORT_LEVEL
-        )
+        severe = spine.resp_flag[idx] and spine.support_level[idx] >= IMV_MIN_SUPPORT_LEVEL
         prone_prob = _PRONE_PROB_SEVERE if severe else _PRONE_PROB_OTHERWISE
         category = "prone" if rng.random() < prone_prob else "not_prone"
         rows.append(

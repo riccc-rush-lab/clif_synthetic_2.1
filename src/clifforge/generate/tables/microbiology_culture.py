@@ -23,6 +23,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import grid_step_hours
 from clifforge.generate.sampling import categorical
 from clifforge.generate.spine import SpineFrame
 
@@ -68,13 +69,6 @@ class CultureEvent:
     organism_group: str
 
 
-def _grid_step_hours(pack: ParamPack) -> float:
-    block = pack.tables.get("spine")
-    if block is None or "params" not in block:
-        return 1.0
-    return float(block["params"].get("state_model", {}).get("grid_step_hours", 1.0))
-
-
 def sample_microbiology_culture(
     spine: SpineFrame,
     pack: ParamPack,
@@ -85,7 +79,7 @@ def sample_microbiology_culture(
 ) -> list[CultureEvent]:
     """Emit one hospitalization's sparse culture events (R5, R22)."""
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
-    los_hours = spine.n_intervals * _grid_step_hours(pack)
+    los_hours = spine.n_intervals * grid_step_hours(pack)
     if los_hours <= 0:
         return []
 
