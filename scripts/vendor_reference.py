@@ -152,7 +152,10 @@ def main() -> None:
     (DATA_ROOT / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    print(f"\nWrote manifest with {len(mcide_map)} mCIDE tables and {len(outlier_map)} outlier tables.")
+    print(
+        f"\nWrote manifest with {len(mcide_map)} mCIDE tables "
+        f"and {len(outlier_map)} outlier tables."
+    )
 
 
 if __name__ == "__main__":
