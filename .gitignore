@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Real / fitted medical data — NEVER commit. Real CLIF-MIMIC lives at absolute
+# paths outside this repo; the fit stage emits only aggregate parameter packs.
+/data/
+*.parquet
+*.feather
+*.pkl
+*.pickle
+
+# Vendored 2.1.0 reference CSVs ARE committed (R24); all other CSVs are not.
+*.csv
+!src/clifforge/reference/data/**
+
+# The committed n=100 demo dataset (R27) is an intentional exception.
+!demo_output/**
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
