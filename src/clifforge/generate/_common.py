@@ -12,9 +12,20 @@ The ordinal ``support_level`` spine ladder: 0 room-air, 1 low-flow O2,
 
 from __future__ import annotations
 
+import polars as pl
+
 from clifforge.fit.param_pack import ParamPack
 
-__all__ = ["ICU_MIN_SUPPORT_LEVEL", "IMV_MIN_SUPPORT_LEVEL", "grid_step_hours"]
+__all__ = [
+    "ICU_MIN_SUPPORT_LEVEL",
+    "IMV_MIN_SUPPORT_LEVEL",
+    "UTC_DATETIME",
+    "grid_step_hours",
+]
+
+#: The polars dtype for every tz-aware UTC datetime column (R7). Shared so a
+#: generator's frame schema never drifts from the conformance gate's expectation.
+UTC_DATETIME = pl.Datetime(time_unit="us", time_zone="UTC")
 
 #: ``support_level >=`` this is ICU-level care (high-flow O2 / NIV and above).
 #: Used to place adt ICU segments and to gate ICU-only observations.

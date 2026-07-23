@@ -32,7 +32,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import grid_step_hours
+from clifforge.generate._common import UTC_DATETIME, grid_step_hours
 from clifforge.generate.sampling import categorical
 from clifforge.generate.spine import SpineFrame
 
@@ -52,8 +52,6 @@ DEATH_DISCHARGE_CATEGORY = "Expired"
 #: spreads real admit times across a calendar; a fixed tz-aware epoch keeps a
 #: standalone sample reproducible and tz-aware UTC (R7, R22).
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
-
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
 
 
 @dataclass(frozen=True)
@@ -155,8 +153,8 @@ def hospitalization_frame(records: list[HospitalizationRecord]) -> pl.DataFrame:
             "patient_id": pl.String,
             "hospitalization_id": pl.String,
             "hospitalization_joined_id": pl.String,
-            "admission_dttm": _UTC_DT,
-            "discharge_dttm": _UTC_DT,
+            "admission_dttm": UTC_DATETIME,
+            "discharge_dttm": UTC_DATETIME,
             "admission_type_name": pl.String,
             "admission_type_category": pl.String,
             "discharge_name": pl.String,

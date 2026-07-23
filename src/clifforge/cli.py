@@ -71,8 +71,10 @@ def _run_generate(args: argparse.Namespace) -> int:
     except ConformanceError as exc:
         print(f"clif-forge generate: conformance failure -> {exc}", file=sys.stderr)
         return 1
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"clif-forge generate: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: any failure is a clean nonzero exit
+        # A malformed-but-loadable pack (KeyError), a version mismatch, or an
+        # unwritable --out (OSError/FileExistsError) must report cleanly, not crash.
+        print(f"clif-forge generate: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     print(f"clif-forge generate: wrote {len(written)} files to {args.out}")
     return 0
@@ -84,8 +86,8 @@ def _run_fit(args: argparse.Namespace) -> int:
 
     try:
         run_fit(args.real_dir, args.out)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"clif-forge fit: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: any failure is a clean nonzero exit
+        print(f"clif-forge fit: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     print(f"clif-forge fit: wrote parameter pack to {args.out}")
     return 0

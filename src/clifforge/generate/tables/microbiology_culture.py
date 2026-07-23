@@ -23,7 +23,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import grid_step_hours
+from clifforge.generate._common import UTC_DATETIME, grid_step_hours
 from clifforge.generate.sampling import categorical
 from clifforge.generate.spine import SpineFrame
 
@@ -53,7 +53,6 @@ _ORGANISM_GROUP_MARGINAL = {
 }
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
 
 
 @dataclass(frozen=True)
@@ -120,9 +119,9 @@ def microbiology_culture_frame(events: list[CultureEvent]) -> pl.DataFrame:
         },
         schema={
             "hospitalization_id": pl.String,
-            "order_dttm": _UTC_DT,
-            "collect_dttm": _UTC_DT,
-            "result_dttm": _UTC_DT,
+            "order_dttm": UTC_DATETIME,
+            "collect_dttm": UTC_DATETIME,
+            "result_dttm": UTC_DATETIME,
             "fluid_name": pl.String,
             "fluid_category": pl.String,
             "method_name": pl.String,

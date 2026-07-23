@@ -6,10 +6,13 @@ calendar, death propagation to ``patient.death_dttm`` (AE4), per-table conforman
 gating, and reproducibility.
 
 **Reproducibility (R22, AE6).** One ``SeedSequence(seed)`` is spawned into one
-independent child stream per encounter, so a given ``(seed, n_patients)`` produces
-byte-identical output regardless of machine or iteration details. Within an
-encounter a single ``Generator`` is threaded through spine -> every table in a
-fixed order, so the whole encounter is deterministic.
+independent child stream per encounter (child ``i`` is stable regardless of
+``n_patients``), so a given ``(seed, n_patients)`` produces identical output.
+Within an encounter a single ``Generator`` is threaded through spine -> every
+table in a fixed order, so the whole encounter is deterministic. Parquet output
+is byte-identical **within a fixed environment**; across a polars/arrow upgrade
+the frame *contents* stay identical (the honest invariant) while the on-disk
+bytes may change.
 
 **Encounter model.** One patient : one hospitalization (``P{i}`` / ``H{i}``). A
 fitted encounters-per-patient distribution does not exist in the pack, so a 1:1
@@ -33,6 +36,7 @@ import polars as pl
 
 from clifforge.conformance import gate
 from clifforge.fit.param_pack import ParamPack
+from clifforge.generate._common import UTC_DATETIME
 from clifforge.generate.spine import sample_spine, truth_frame
 from clifforge.generate.tables.adt import adt_frame, sample_adt
 from clifforge.generate.tables.code_status import code_status_frame, sample_code_status
@@ -77,11 +81,11 @@ from clifforge.generate.tables.vitals import sample_vitals, vitals_frame
 
 __all__ = ["GeneratedDataset", "generate_dataset", "write_dataset"]
 
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
-#: Admissions are spread across a two-year calendar so timestamps are realistic
-#: and encounters do not all collide on one instant.
+#: Admissions are spread across a two-year calendar at second resolution, so
+#: timestamps are realistic and collisions stay vanishingly rare even at large n
+#: (hour resolution gave only ~17.5k slots and collided within a few hundred stays).
 _CALENDAR_START = datetime(2018, 1, 1, tzinfo=UTC)
-_CALENDAR_SPAN_DAYS = 730
+_CALENDAR_SPAN_SECONDS = 730 * 24 * 3600
 
 
 @dataclass(frozen=True)
@@ -93,10 +97,7 @@ class GeneratedDataset:
 
 
 def _admit_dttm(rng: np.random.Generator) -> datetime:
-    return _CALENDAR_START + timedelta(
-        days=int(rng.integers(0, _CALENDAR_SPAN_DAYS)),
-        hours=int(rng.integers(0, 24)),
-    )
+    return _CALENDAR_START + timedelta(seconds=int(rng.integers(0, _CALENDAR_SPAN_SECONDS)))
 
 
 def generate_dataset(
@@ -194,7 +195,7 @@ def generate_dataset(
         )
 
     patient_df = patient_frame(patients).with_columns(
-        pl.Series("death_dttm", patient_deaths, dtype=_UTC_DT)
+        pl.Series("death_dttm", patient_deaths, dtype=UTC_DATETIME)
     )
 
     tables: dict[str, pl.DataFrame] = {

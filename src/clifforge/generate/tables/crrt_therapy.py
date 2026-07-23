@@ -22,7 +22,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import grid_step_hours
+from clifforge.generate._common import UTC_DATETIME, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["CrrtRow", "crrt_therapy_frame", "sample_crrt_therapy"]
@@ -30,7 +30,6 @@ __all__ = ["CrrtRow", "crrt_therapy_frame", "sample_crrt_therapy"]
 _CRRT_MODE = "cvvhdf"
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
 
 
 @dataclass(frozen=True)
@@ -103,7 +102,7 @@ def crrt_therapy_frame(rows: list[CrrtRow]) -> pl.DataFrame:
         schema={
             "hospitalization_id": pl.String,
             "device_id": pl.String,
-            "recorded_dttm": _UTC_DT,
+            "recorded_dttm": UTC_DATETIME,
             "crrt_mode_name": pl.String,
             "crrt_mode_category": pl.String,
             "blood_flow_rate": pl.Float64,

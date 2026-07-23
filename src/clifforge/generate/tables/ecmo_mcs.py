@@ -18,7 +18,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import grid_step_hours
+from clifforge.generate._common import UTC_DATETIME, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["EcmoRow", "ecmo_mcs_frame", "sample_ecmo_mcs"]
@@ -30,7 +30,6 @@ _MCS_GROUP = "ECMO"
 _DEVICE_METRIC = "sweep_speed"
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
 
 
 @dataclass(frozen=True)
@@ -94,7 +93,7 @@ def ecmo_mcs_frame(rows: list[EcmoRow]) -> pl.DataFrame:
         },
         schema={
             "hospitalization_id": pl.String,
-            "recorded_dttm": _UTC_DT,
+            "recorded_dttm": UTC_DATETIME,
             "device_name": pl.String,
             "device_category": pl.String,
             "mcs_group": pl.String,

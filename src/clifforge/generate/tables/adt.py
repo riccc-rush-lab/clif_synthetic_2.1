@@ -33,7 +33,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, grid_step_hours
+from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, UTC_DATETIME, grid_step_hours
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["ICU_MIN_SUPPORT_LEVEL", "AdtMovement", "adt_frame", "icu_windows", "sample_adt"]
@@ -44,7 +44,6 @@ _HOSPITAL_TYPE = "academic"
 _ICU_LOCATION_TYPE = "medical_icu"
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
 
 
 @dataclass(frozen=True)
@@ -144,8 +143,8 @@ def adt_frame(movements: list[AdtMovement]) -> pl.DataFrame:
             "hospitalization_id": pl.String,
             "hospital_id": pl.String,
             "hospital_type": pl.String,
-            "in_dttm": _UTC_DT,
-            "out_dttm": _UTC_DT,
+            "in_dttm": UTC_DATETIME,
+            "out_dttm": UTC_DATETIME,
             "location_name": pl.String,
             "location_category": pl.String,
             "location_type": pl.String,

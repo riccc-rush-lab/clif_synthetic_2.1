@@ -208,6 +208,27 @@ def test_generate_dataset_is_deterministic(pack: ParamPack) -> None:
     assert a.truth.equals(b.truth)
 
 
+def test_seed_actually_changes_output(pack: ParamPack) -> None:
+    # Guards against the seed being ignored (e.g. a hardcoded SeedSequence(42)) —
+    # the same-seed determinism tests would still pass in that regression.
+    a = generate_dataset(pack, n_patients=10, seed=1)
+    b = generate_dataset(pack, n_patients=10, seed=2)
+    assert not a.truth.equals(b.truth)
+    assert not a.tables["hospitalization"].equals(b.tables["hospitalization"])
+
+
+def test_first_encounters_stable_across_n_patients(pack: ParamPack) -> None:
+    # SeedSequence.spawn(n) assigns child i a stable key regardless of n, so the
+    # first k encounters must be identical whether we ask for k or more — the
+    # property that would make generation safely resumable/extendable.
+    small = generate_dataset(pack, n_patients=5, seed=9)
+    large = generate_dataset(pack, n_patients=20, seed=9)
+    first5 = {f"P{i}" for i in range(5)}
+    small_p = small.tables["patient"].sort("patient_id")
+    large_p = large.tables["patient"].filter(pl.col("patient_id").is_in(first5)).sort("patient_id")
+    assert small_p.equals(large_p)
+
+
 def test_ae4_death_propagates_to_patient(pack: ParamPack) -> None:
     ds = generate_dataset(pack, n_patients=60, seed=3)
     deaths = ds.tables["patient"].filter(pl.col("death_dttm").is_not_null()).height
@@ -223,6 +244,19 @@ def test_zero_orphans_across_all_tables(pack: ParamPack) -> None:
     for name, frame in ds.tables.items():
         if name != "hospitalization" and "hospitalization_id" in frame.columns:
             assert set(frame["hospitalization_id"].to_list()) <= hosp_ids, f"orphan in {name}"
+    # code_status is the one table keyed on patient_id, not hospitalization_id.
+    code_status = ds.tables["code_status"]
+    assert "patient_id" in code_status.columns
+    assert set(code_status["patient_id"].to_list()) <= patient_ids, "orphan in code_status"
+
+
+def test_high_acuity_tables_are_actually_populated(pack: ParamPack) -> None:
+    # ecmo/crrt/hemodynamics fire only at rare high-acuity states; assert they
+    # are non-empty at n large enough to reach those states, so their row-build
+    # logic is exercised rather than passing vacuously on empty frames.
+    ds = generate_dataset(pack, n_patients=200, seed=11)
+    for name in ("ecmo_mcs", "crrt_therapy", "invasive_hemodynamics", "transfusion"):
+        assert ds.tables[name].height > 0, f"{name} never populated — coupling logic untested"
 
 
 def test_n_patients_must_be_positive(pack: ParamPack) -> None:
@@ -284,26 +318,34 @@ def test_cli_ae6_two_runs_byte_identical(pack: ParamPack, tmp_path) -> None:
         assert (out_b / pa.name).read_bytes() == pa.read_bytes(), f"{pa.name} not byte-identical"
 
 
-def test_cli_generate_nonzero_on_conformance_failure(monkeypatch, tmp_path, pack) -> None:
-    # Corrupt one table's assembler so the real conformance gate rejects it; the
-    # CLI must surface that as a nonzero exit (R25) rather than writing bad data.
+@pytest.mark.parametrize(
+    ("frame_attr", "id_col"),
+    [
+        ("patient_frame", "patient_id"),
+        ("provider_frame", "provider_id"),
+    ],  # first + last gated table
+)
+def test_cli_generate_nonzero_on_conformance_failure(
+    monkeypatch, tmp_path, pack, frame_attr, id_col
+) -> None:
+    # Corrupt a table's assembler (null a required id column) so the real gate
+    # rejects it; the CLI must surface that as a nonzero exit (R25), not bad data.
+    # Parametrized over an early and a late table so a dropped gate call for a
+    # downstream table can't hide behind patient's own failure.
     import clifforge.generate.orchestrator as orch
 
-    real_patient_frame = orch.patient_frame
+    real_frame = getattr(orch, frame_attr)
 
-    def corrupt_patient_frame(records):
-        return real_patient_frame(records).with_columns(
-            pl.lit("NotAnMcideRace").alias("race_category")
-        )
+    def corrupt(records):
+        return real_frame(records).with_columns(pl.lit(None, dtype=pl.String).alias(id_col))
 
-    monkeypatch.setattr(orch, "patient_frame", corrupt_patient_frame)
+    monkeypatch.setattr(orch, frame_attr, corrupt)
     pack_dir = tmp_path / "pack"
     pack.write(pack_dir)
-    code = main(
-        ["generate", "--n-patients", "5", "--out", str(tmp_path / "o"), "--pack", str(pack_dir)]
-    )
+    out = tmp_path / "o"
+    code = main(["generate", "--n-patients", "5", "--out", str(out), "--pack", str(pack_dir)])
     assert code == 1  # R25: any validation failure -> nonzero exit
-    assert not (tmp_path / "o" / "clif_patient.parquet").exists()  # nothing written on failure
+    assert not out.exists()  # gate precedes write: no partial output for any table
 
 
 def test_cli_generate_nonzero_on_missing_pack(tmp_path) -> None:
@@ -332,3 +374,23 @@ def test_cli_fit_invokes_run_fit(monkeypatch, tmp_path) -> None:
     code = main(["fit", "--real-dir", str(tmp_path / "real"), "--out", str(tmp_path / "pack")])
     assert code == 0
     assert called["real_dir"].endswith("real") and called["out_dir"].endswith("pack")
+
+
+def test_cli_fit_nonzero_on_run_fit_error(monkeypatch, tmp_path) -> None:
+    def _boom(*_a, **_k):
+        raise FileNotFoundError("real-dir not found")
+
+    monkeypatch.setattr("clifforge.fit.run_fit.run_fit", _boom)
+    code = main(["fit", "--real-dir", str(tmp_path / "real"), "--out", str(tmp_path / "pack")])
+    assert code == 1  # fit's error path mirrors generate's R25-style clean exit
+
+
+def test_cli_generate_clean_exit_when_out_is_a_file(pack: ParamPack, tmp_path) -> None:
+    # --out pointing at an existing regular file makes mkdir raise FileExistsError;
+    # the CLI must report it cleanly (nonzero), not crash with a traceback.
+    pack_dir = tmp_path / "pack"
+    pack.write(pack_dir)
+    out_file = tmp_path / "out_is_a_file"
+    out_file.write_text("i am not a directory")
+    code = main(["generate", "--n-patients", "3", "--out", str(out_file), "--pack", str(pack_dir)])
+    assert code == 1

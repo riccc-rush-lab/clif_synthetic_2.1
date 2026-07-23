@@ -24,7 +24,12 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, IMV_MIN_SUPPORT_LEVEL, grid_step_hours
+from clifforge.generate._common import (
+    ICU_MIN_SUPPORT_LEVEL,
+    IMV_MIN_SUPPORT_LEVEL,
+    UTC_DATETIME,
+    grid_step_hours,
+)
 from clifforge.generate.spine import SpineFrame
 
 __all__ = [
@@ -39,7 +44,6 @@ _RASS_CATEGORY = "RASS"
 _GCS_CATEGORY = "gcs_total"
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
 
 
 @dataclass(frozen=True)
@@ -104,7 +108,7 @@ def patient_assessments_frame(rows: list[AssessmentRow]) -> pl.DataFrame:
         },
         schema={
             "hospitalization_id": pl.String,
-            "recorded_dttm": _UTC_DT,
+            "recorded_dttm": UTC_DATETIME,
             "assessment_name": pl.String,
             "assessment_category": pl.String,
             "numerical_value": pl.Float64,

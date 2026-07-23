@@ -18,7 +18,7 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import grid_step_hours
+from clifforge.generate._common import UTC_DATETIME, grid_step_hours
 from clifforge.generate.sampling import categorical
 from clifforge.generate.spine import SpineFrame
 
@@ -32,7 +32,6 @@ _COMPONENT_VOLUME = {"RBC": 300.0, "FFP": 250.0, "Platelets": 300.0}
 _VOLUME_UNITS = "mL"
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
-_UTC_DT = pl.Datetime(time_unit="us", time_zone="UTC")
 
 
 @dataclass(frozen=True)
@@ -101,8 +100,8 @@ def transfusion_frame(rows: list[TransfusionRow]) -> pl.DataFrame:
         },
         schema={
             "hospitalization_id": pl.String,
-            "transfusion_start_dttm": _UTC_DT,
-            "transfusion_end_dttm": _UTC_DT,
+            "transfusion_start_dttm": UTC_DATETIME,
+            "transfusion_end_dttm": UTC_DATETIME,
             "component_name": pl.String,
             "attribute_name": pl.String,
             "volume_transfused": pl.Float64,
