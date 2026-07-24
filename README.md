@@ -66,6 +66,23 @@ gates into a Markdown report. Comparative sections require a reference dataset;
 when none is supplied they are marked *not computed* rather than filled with a
 placebo number, and the report always records **what** the reference was.
 
+### Evaluating against real data
+
+The committed demo report's comparative numbers use a second synthetic draw, so
+they measure **generator self-consistency**, not real-data fidelity. Producing the
+real numbers needs a staged real CLIF reference and, for a CLIF-MIMIC reference,
+the patient-disjoint holdout split the fit stage reserved.
+
+One precondition deserves emphasis. The leakage guard decides a patient's
+partition by hashing the `patient_id` **string**, so it is only meaningful when
+those ids are the same namespace the pack was fit on. The pack deliberately
+stores no identifiers, so this cannot be checked automatically — and a re-hashed
+or re-identified reference does not error, it returns a *confidently wrong*
+answer: hashing unrelated ids yields a holdout fraction that simply matches the
+configured fraction, which is indistinguishable from a correct split. For that
+reason `assert_holdout_disjoint` refuses to run until the caller passes
+`ids_share_fit_namespace=True`, affirming the one thing only they can verify.
+
 ## Status
 
 The fit and generate stages and all three evaluation surfaces are implemented;

@@ -87,6 +87,64 @@ __all__ = ["GeneratedDataset", "generate_dataset", "write_dataset"]
 _CALENDAR_START = datetime(2018, 1, 1, tzinfo=UTC)
 _CALENDAR_SPAN_SECONDS = 730 * 24 * 3600
 
+#: The spine-driven tables, as one list: name, sampler, frame assembler, and which
+#: id the sampler is keyed on. `acc`, the per-encounter loop, and the frame
+#: assembly all derive from this, so adding a table means editing exactly one
+#: place instead of three hand-synced lists.
+#:
+#: **Order is load-bearing.** Each encounter threads a single Generator through
+#: these samplers in sequence, so reordering changes every downstream draw and
+#: breaks byte-reproducibility (R22/AE6) against previously generated datasets.
+_TABLE_REGISTRY: tuple[tuple[str, Any, Any, str], ...] = (
+    ("adt", sample_adt, adt_frame, "hospitalization_id"),
+    ("vitals", sample_vitals, vitals_frame, "hospitalization_id"),
+    ("labs", sample_labs, labs_frame, "hospitalization_id"),
+    (
+        "respiratory_support",
+        sample_respiratory_support,
+        respiratory_support_frame,
+        "hospitalization_id",
+    ),
+    (
+        "medication_admin_continuous",
+        sample_medication_admin_continuous,
+        medication_admin_continuous_frame,
+        "hospitalization_id",
+    ),
+    (
+        "medication_admin_intermittent",
+        sample_medication_admin_intermittent,
+        medication_admin_intermittent_frame,
+        "hospitalization_id",
+    ),
+    (
+        "patient_assessments",
+        sample_patient_assessments,
+        patient_assessments_frame,
+        "hospitalization_id",
+    ),
+    ("position", sample_position, position_frame, "hospitalization_id"),
+    (
+        "microbiology_culture",
+        sample_microbiology_culture,
+        microbiology_culture_frame,
+        "hospitalization_id",
+    ),
+    ("crrt_therapy", sample_crrt_therapy, crrt_therapy_frame, "hospitalization_id"),
+    ("code_status", sample_code_status, code_status_frame, "patient_id"),
+    ("ecmo_mcs", sample_ecmo_mcs, ecmo_mcs_frame, "hospitalization_id"),
+    (
+        "invasive_hemodynamics",
+        sample_invasive_hemodynamics,
+        invasive_hemodynamics_frame,
+        "hospitalization_id",
+    ),
+    ("transfusion", sample_transfusion, transfusion_frame, "hospitalization_id"),
+    ("key_icu_orders", sample_key_icu_orders, key_icu_orders_frame, "hospitalization_id"),
+    ("therapy_details", sample_therapy_details, therapy_details_frame, "hospitalization_id"),
+    ("provider", sample_provider, provider_frame, "hospitalization_id"),
+)
+
 
 @dataclass(frozen=True)
 class GeneratedDataset:
@@ -113,28 +171,7 @@ def generate_dataset(
     child_seeds = np.random.SeedSequence(seed).spawn(n_patients)
 
     patients, patient_deaths, hospitalizations, spines = [], [], [], []
-    acc: dict[str, list[Any]] = {
-        name: []
-        for name in (
-            "adt",
-            "vitals",
-            "labs",
-            "respiratory_support",
-            "medication_admin_continuous",
-            "medication_admin_intermittent",
-            "patient_assessments",
-            "position",
-            "microbiology_culture",
-            "crrt_therapy",
-            "code_status",
-            "ecmo_mcs",
-            "invasive_hemodynamics",
-            "transfusion",
-            "key_icu_orders",
-            "therapy_details",
-            "provider",
-        )
-    }
+    acc: dict[str, list[Any]] = {name: [] for name, *_ in _TABLE_REGISTRY}
 
     for i, child in enumerate(child_seeds):
         rng = np.random.default_rng(child)
@@ -150,49 +187,9 @@ def generate_dataset(
         hospitalizations.append(hosp)
         patient_deaths.append(hosp.death_dttm)  # AE4: death lands on the patient row
 
-        acc["adt"] += sample_adt(spine, pack, rng, hospitalization_id=hid, admit_dttm=admit)
-        acc["vitals"] += sample_vitals(spine, pack, rng, hospitalization_id=hid, admit_dttm=admit)
-        acc["labs"] += sample_labs(spine, pack, rng, hospitalization_id=hid, admit_dttm=admit)
-        acc["respiratory_support"] += sample_respiratory_support(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["medication_admin_continuous"] += sample_medication_admin_continuous(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["medication_admin_intermittent"] += sample_medication_admin_intermittent(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["patient_assessments"] += sample_patient_assessments(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["position"] += sample_position(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["microbiology_culture"] += sample_microbiology_culture(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["crrt_therapy"] += sample_crrt_therapy(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["code_status"] += sample_code_status(spine, pack, rng, patient_id=pid, admit_dttm=admit)
-        acc["ecmo_mcs"] += sample_ecmo_mcs(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["invasive_hemodynamics"] += sample_invasive_hemodynamics(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["transfusion"] += sample_transfusion(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["key_icu_orders"] += sample_key_icu_orders(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["therapy_details"] += sample_therapy_details(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
-        acc["provider"] += sample_provider(
-            spine, pack, rng, hospitalization_id=hid, admit_dttm=admit
-        )
+        for name, sample_fn, _frame_fn, id_kwarg in _TABLE_REGISTRY:
+            ident = pid if id_kwarg == "patient_id" else hid
+            acc[name] += sample_fn(spine, pack, rng, **{id_kwarg: ident}, admit_dttm=admit)
 
     patient_df = patient_frame(patients).with_columns(
         pl.Series("death_dttm", patient_deaths, dtype=UTC_DATETIME)
@@ -201,28 +198,9 @@ def generate_dataset(
     tables: dict[str, pl.DataFrame] = {
         "patient": patient_df,
         "hospitalization": hospitalization_frame(hospitalizations),
-        "adt": adt_frame(acc["adt"]),
-        "vitals": vitals_frame(acc["vitals"]),
-        "labs": labs_frame(acc["labs"]),
-        "respiratory_support": respiratory_support_frame(acc["respiratory_support"]),
-        "medication_admin_continuous": medication_admin_continuous_frame(
-            acc["medication_admin_continuous"]
-        ),
-        "medication_admin_intermittent": medication_admin_intermittent_frame(
-            acc["medication_admin_intermittent"]
-        ),
-        "patient_assessments": patient_assessments_frame(acc["patient_assessments"]),
-        "position": position_frame(acc["position"]),
-        "microbiology_culture": microbiology_culture_frame(acc["microbiology_culture"]),
-        "crrt_therapy": crrt_therapy_frame(acc["crrt_therapy"]),
-        "code_status": code_status_frame(acc["code_status"]),
-        "ecmo_mcs": ecmo_mcs_frame(acc["ecmo_mcs"]),
-        "invasive_hemodynamics": invasive_hemodynamics_frame(acc["invasive_hemodynamics"]),
-        "transfusion": transfusion_frame(acc["transfusion"]),
-        "key_icu_orders": key_icu_orders_frame(acc["key_icu_orders"]),
-        "therapy_details": therapy_details_frame(acc["therapy_details"]),
-        "provider": provider_frame(acc["provider"]),
     }
+    for name, _sample_fn, frame_fn, _id_kwarg in _TABLE_REGISTRY:
+        tables[name] = frame_fn(acc[name])
 
     for name, frame in tables.items():
         gate.validate(frame, name, run_secondary=False)  # raises ConformanceError (R25)

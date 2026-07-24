@@ -179,15 +179,24 @@ def test_cli_ae6_two_runs_byte_identical(pack: ParamPack, tmp_path) -> None:
         assert (out_b / pa.name).read_bytes() == pa.read_bytes(), f"{pa.name} not byte-identical"
 
 
+def _null_id_wrapper(frame_fn, id_col):
+    """Wrap a frame assembler so it nulls a required id column (a real gate failure)."""
+
+    def corrupt(records):
+        return frame_fn(records).with_columns(pl.lit(None, dtype=pl.String).alias(id_col))
+
+    return corrupt
+
+
 @pytest.mark.parametrize(
-    ("frame_attr", "id_col"),
+    ("table", "id_col"),
     [
-        ("patient_frame", "patient_id"),
-        ("provider_frame", "provider_id"),
-    ],  # first + last gated table
+        ("patient", "patient_id"),  # assembled directly by the orchestrator
+        ("provider", "provider_id"),  # assembled via the table registry (last entry)
+    ],
 )
 def test_cli_generate_nonzero_on_conformance_failure(
-    monkeypatch, tmp_path, pack, frame_attr, id_col
+    monkeypatch, tmp_path, pack, table, id_col
 ) -> None:
     # Corrupt a table's assembler (null a required id column) so the real gate
     # rejects it; the CLI must surface that as a nonzero exit (R25), not bad data.
@@ -195,12 +204,22 @@ def test_cli_generate_nonzero_on_conformance_failure(
     # downstream table can't hide behind patient's own failure.
     import clifforge.generate.orchestrator as orch
 
-    real_frame = getattr(orch, frame_attr)
+    if table == "patient":
+        monkeypatch.setattr(orch, "patient_frame", _null_id_wrapper(orch.patient_frame, id_col))
+    else:
+        # _TABLE_REGISTRY captures frame functions at import, so patching the
+        # module attribute would not reach it — patch the registry entry itself.
+        patched = tuple(
+            (
+                name,
+                sample_fn,
+                _null_id_wrapper(frame_fn, id_col) if name == table else frame_fn,
+                key,
+            )
+            for name, sample_fn, frame_fn, key in orch._TABLE_REGISTRY
+        )
+        monkeypatch.setattr(orch, "_TABLE_REGISTRY", patched)
 
-    def corrupt(records):
-        return real_frame(records).with_columns(pl.lit(None, dtype=pl.String).alias(id_col))
-
-    monkeypatch.setattr(orch, frame_attr, corrupt)
     pack_dir = tmp_path / "pack"
     pack.write(pack_dir)
     out = tmp_path / "o"

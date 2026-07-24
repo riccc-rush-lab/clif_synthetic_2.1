@@ -177,6 +177,8 @@ def run_tstr(
 def assert_holdout_disjoint(
     real_patient_ids: Iterable[str],
     manifest: Mapping[str, Any],
+    *,
+    ids_share_fit_namespace: bool = False,
 ) -> None:
     """Fail if any real test patient was in the pack's fit partition (R19 leakage guard).
 
@@ -184,7 +186,24 @@ def assert_holdout_disjoint(
     identical ``sha1_mod_10000`` predicate the fit stage used. Raises if the split
     spec is absent (so the guard can never be silently skipped) or if any test
     patient hashes into the training partition.
+
+    **Precondition the caller must affirm.** The partition is a hash of the
+    ``patient_id`` *string*, so it is only meaningful when these ids are from the
+    same identifier namespace the pack was fit on. The pack deliberately stores no
+    identifiers, so this cannot be verified automatically — and a re-hashed or
+    re-identified dataset produces a confidently wrong answer rather than an
+    error: hashing unrelated strings yields a holdout fraction that simply matches
+    the configured fraction, which looks exactly like a correct result. Pass
+    ``ids_share_fit_namespace=True`` only after confirming the id space matches.
     """
+    if not ids_share_fit_namespace:
+        raise ValueError(
+            "leakage check requires affirming that these patient_ids come from the same "
+            "identifier namespace the parameter pack was fit on. The pack stores no "
+            "identifiers by design, so this cannot be verified automatically: a re-hashed "
+            "or re-identified reference yields a meaningless partition that still looks "
+            "plausible. Pass ids_share_fit_namespace=True once you have confirmed it."
+        )
     split = manifest.get("split")
     if not isinstance(split, Mapping):
         raise ValueError(

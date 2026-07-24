@@ -79,7 +79,7 @@ def test_holdout_guard_passes_for_holdout_only_patients() -> None:
     ids = [f"P{i}" for i in range(500)]
     _train, holdout = _partition(ids, 20260723, 0.2)
     assert holdout  # the fixture must actually produce some holdout patients
-    assert_holdout_disjoint(holdout, manifest)  # must not raise
+    assert_holdout_disjoint(holdout, manifest, ids_share_fit_namespace=True)  # must not raise
 
 
 def test_holdout_guard_raises_on_leaked_patient() -> None:
@@ -88,16 +88,40 @@ def test_holdout_guard_raises_on_leaked_patient() -> None:
     train, holdout = _partition(ids, 20260723, 0.2)
     assert train
     with pytest.raises(ValueError, match="leakage"):
-        assert_holdout_disjoint(holdout + train[:1], manifest)  # one training patient leaks in
+        assert_holdout_disjoint(
+            holdout + train[:1], manifest, ids_share_fit_namespace=True
+        )  # one training patient leaks in
 
 
 def test_holdout_guard_raises_when_split_missing() -> None:
     with pytest.raises(ValueError, match="no 'split' spec"):
-        assert_holdout_disjoint(["P0"], {"clif_version": "2.1.0"})
+        assert_holdout_disjoint(["P0"], {"clif_version": "2.1.0"}, ids_share_fit_namespace=True)
 
 
 def test_holdout_guard_rejects_unknown_method() -> None:
     with pytest.raises(ValueError, match="unsupported split method"):
         assert_holdout_disjoint(
-            ["P0"], {"split": {"method": "random", "seed": 1, "holdout_fraction": 0.2}}
+            ["P0"],
+            {"split": {"method": "random", "seed": 1, "holdout_fraction": 0.2}},
+            ids_share_fit_namespace=True,
         )
+
+
+def test_holdout_guard_refuses_unaffirmed_namespace() -> None:
+    # The partition hashes the patient_id string, so it is only meaningful when the
+    # ids share the pack's namespace. A re-hashed reference yields a holdout
+    # fraction that merely matches the configured fraction — a confidently wrong
+    # answer — so the guard must refuse rather than assume.
+    with pytest.raises(ValueError, match="identifier namespace"):
+        assert_holdout_disjoint(["P0"], _split_manifest())
+
+
+def test_mismatched_namespace_would_look_plausible() -> None:
+    # Demonstrates the trap the affirmation exists to prevent: hashing ids from an
+    # unrelated namespace splits them at ~the configured fraction, which is
+    # indistinguishable from a correct partition by inspection alone.
+    import hashlib
+
+    foreign = [hashlib.sha256(f"unrelated-{i}".encode()).hexdigest() for i in range(4000)]
+    holdout = [p for p in foreign if _holdout_mask(p, 20260723, 0.2)]
+    assert 0.17 < len(holdout) / len(foreign) < 0.23  # looks exactly like a real 20% holdout

@@ -3,9 +3,32 @@ name: CI
 on:
   push:
     branches: [main, master]
+    tags: ["v*"]
   pull_request:
+  release:
+    types: [published]
 
 jobs:
+  # Publication gate (R4, R28). The parameter pack is fitted over
+  # MIMIC-IV-Ext-CLIF under a PhysioNet credentialed DUA: fitting locally is
+  # permitted, publishing a derived artifact is not until a human records the
+  # PhysioNet/MIMIC + Rush compliance review. This job fails the release unless
+  # COMPLIANCE_ACK.md is present and complete, so the DUA blocker is enforced by
+  # CI rather than remembered.
+  release-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compliance acknowledgment must be recorded
+        run: uv run python scripts/release_gate.py
+
   quality:
     runs-on: ubuntu-latest
     steps:
@@ -16,8 +39,9 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Sync (core + dev)
-        run: uv sync --extra dev
+      - name: Sync (core + dev + eval)
+        # `eval` is required: the evaluation tests import lightgbm / sdmetrics.
+        run: uv sync --extra dev --extra eval
 
       - name: Ruff
         run: uv run ruff check .
