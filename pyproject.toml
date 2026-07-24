@@ -27,11 +27,13 @@ eval = [
     "pandas>=2.0",
     "sdmetrics>=0.14",
 ]
-# Privacy metrics only — synthcity's metrics module, isolated here to contain
-# its torch dependency tree (R20). Apache-2.0; generators are never imported.
-privacy = [
-    "synthcity>=0.2.11",
-]
+# Privacy metrics (DCR, NN-distance ratio, identifiability) are computed
+# standalone from numpy + scikit-learn (already in the `eval` extra), with NO
+# torch/synthcity dependency (R20 — the goal is to *contain* the torch tree; we
+# contain it to zero). synthcity 0.2.11's metrics module is unusable here: its
+# resolved torch 2.2.2 is incompatible with the transformers it pulls
+# (torch.nn.RMSNorm missing), so the standard metric definitions are implemented
+# directly instead. See src/clifforge/eval/privacy.py.
 dev = [
     "ruff>=0.6",
     "mypy>=1.11",
