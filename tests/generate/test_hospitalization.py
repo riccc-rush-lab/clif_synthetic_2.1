@@ -222,3 +222,34 @@ def test_module_exports() -> None:
         "hospitalization_frame",
         "sample_hospitalization",
     }
+
+
+def test_age_at_admission_generated_only_when_pack_has_grid() -> None:
+    from clifforge.generate.tables.hospitalization import _sample_age
+
+    # No age grid in the pack -> no age column at all (byte-identical to before).
+    pack = _pack()
+    rec = sample_hospitalization(_spine("H0", 6, "alive"), pack, np.random.default_rng(0))
+    assert rec.age_at_admission is None
+    frame = hospitalization_frame([rec])
+    assert "age_at_admission" not in frame.columns
+
+    # With a grid, age is sampled within its bounds and appears in the frame.
+    grid = [18.0, 40.0, 55.0, 61.0, 70.0, 85.0, 105.0]
+    pack.tables["hospitalization"]["params"]["age_at_admission_quantiles"] = grid
+    recs = [
+        sample_hospitalization(_spine(f"H{i}", 6, "alive"), pack, np.random.default_rng(i))
+        for i in range(200)
+    ]
+    ages = [r.age_at_admission for r in recs]
+    assert all(a is not None and 18 <= a <= 105 for a in ages)
+    frame = hospitalization_frame(recs)
+    assert "age_at_admission" in frame.columns
+    assert frame.schema["age_at_admission"] == pl.Int64
+    # inverse-CDF recovers the grid's median within a couple of years
+    assert abs(float(pl.Series(ages).median()) - 61.0) < 4
+
+    # _sample_age is deterministic under a fixed rng
+    assert _sample_age(grid, np.random.default_rng(3)) == _sample_age(
+        grid, np.random.default_rng(3)
+    )

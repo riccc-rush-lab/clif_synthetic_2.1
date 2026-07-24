@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -73,14 +74,24 @@ class HospitalizationRecord:
     discharge_category: str
     discharge_name: str
     death_dttm: datetime | None
+    age_at_admission: int | None = None  # populated only when the pack fits an age grid
 
 
-def _hospitalization_params(pack: ParamPack) -> dict[str, dict[str, float]]:
+def _hospitalization_params(pack: ParamPack) -> dict[str, Any]:
     block = pack.tables.get("hospitalization")
     if block is None or "params" not in block:
         raise ValueError("parameter pack has no fitted 'hospitalization' block to sample from")
-    params: dict[str, dict[str, float]] = block["params"]
+    params: dict[str, Any] = block["params"]
     return params
+
+
+def _sample_age(quantiles: list[float], rng: np.random.Generator) -> int:
+    """Draw an age by inverse-CDF interpolation over a quantile grid ([q0..qN])."""
+    pos = float(rng.random()) * (len(quantiles) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(quantiles) - 1)
+    value = quantiles[lo] + (pos - lo) * (quantiles[hi] - quantiles[lo])
+    return int(round(value))
 
 
 def sample_hospitalization(
@@ -121,6 +132,11 @@ def sample_hospitalization(
         discharge_category = categorical(survivor_marginal, rng)
         death_dttm = None
 
+    # Age is drawn last so the rng order for packs without an age grid (and thus
+    # the byte-for-byte reproducibility of their output) is unchanged.
+    age_quantiles = params.get("age_at_admission_quantiles")
+    age = _sample_age(age_quantiles, rng) if age_quantiles else None
+
     return HospitalizationRecord(
         patient_id=patient_id,
         hospitalization_id=hospitalization_id,
@@ -132,32 +148,40 @@ def sample_hospitalization(
         discharge_category=discharge_category,
         discharge_name=discharge_category,
         death_dttm=death_dttm,
+        age_at_admission=age,
     )
 
 
 def hospitalization_frame(records: list[HospitalizationRecord]) -> pl.DataFrame:
-    """Stack sampled encounters into one conformant ``hospitalization`` frame."""
-    return pl.DataFrame(
-        {
-            "patient_id": [r.patient_id for r in records],
-            "hospitalization_id": [r.hospitalization_id for r in records],
-            "hospitalization_joined_id": [r.hospitalization_joined_id for r in records],
-            "admission_dttm": [r.admission_dttm for r in records],
-            "discharge_dttm": [r.discharge_dttm for r in records],
-            "admission_type_name": [r.admission_type_name for r in records],
-            "admission_type_category": [r.admission_type_category for r in records],
-            "discharge_name": [r.discharge_name for r in records],
-            "discharge_category": [r.discharge_category for r in records],
-        },
-        schema={
-            "patient_id": pl.String,
-            "hospitalization_id": pl.String,
-            "hospitalization_joined_id": pl.String,
-            "admission_dttm": UTC_DATETIME,
-            "discharge_dttm": UTC_DATETIME,
-            "admission_type_name": pl.String,
-            "admission_type_category": pl.String,
-            "discharge_name": pl.String,
-            "discharge_category": pl.String,
-        },
-    )
+    """Stack sampled encounters into one conformant ``hospitalization`` frame.
+
+    ``age_at_admission`` is emitted only when the pack fit an age grid (any record
+    carries it); otherwise the column is omitted entirely, so output for age-less
+    packs stays byte-for-byte identical (R22).
+    """
+    data: dict[str, list[object]] = {
+        "patient_id": [r.patient_id for r in records],
+        "hospitalization_id": [r.hospitalization_id for r in records],
+        "hospitalization_joined_id": [r.hospitalization_joined_id for r in records],
+        "admission_dttm": [r.admission_dttm for r in records],
+        "discharge_dttm": [r.discharge_dttm for r in records],
+        "admission_type_name": [r.admission_type_name for r in records],
+        "admission_type_category": [r.admission_type_category for r in records],
+        "discharge_name": [r.discharge_name for r in records],
+        "discharge_category": [r.discharge_category for r in records],
+    }
+    schema: dict[str, Any] = {
+        "patient_id": pl.String,
+        "hospitalization_id": pl.String,
+        "hospitalization_joined_id": pl.String,
+        "admission_dttm": UTC_DATETIME,
+        "discharge_dttm": UTC_DATETIME,
+        "admission_type_name": pl.String,
+        "admission_type_category": pl.String,
+        "discharge_name": pl.String,
+        "discharge_category": pl.String,
+    }
+    if any(r.age_at_admission is not None for r in records):
+        data["age_at_admission"] = [r.age_at_admission for r in records]
+        schema["age_at_admission"] = pl.Int64
+    return pl.DataFrame(data, schema=schema)
