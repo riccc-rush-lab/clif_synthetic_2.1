@@ -90,3 +90,10 @@ def test_frame_passes_gate_and_datetimes_are_tz_aware() -> None:
 
 def test_module_exports() -> None:
     assert set(pos.__all__) == {"PositionRow", "position_frame", "sample_position"}
+
+
+def test_prone_probabilities_are_pack_overridable() -> None:
+    pack = _pack()
+    pack.tables["position"] = {"params": {"prone_prob_severe": 0.0, "prone_prob_otherwise": 0.0}}
+    rows = sample_position(_spine([3] * 200, hid="Hz", resp=True), pack, np.random.default_rng(0))
+    assert rows and all(r.position_category == "not_prone" for r in rows)  # override -> no prone

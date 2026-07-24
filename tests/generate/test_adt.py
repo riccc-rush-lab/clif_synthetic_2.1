@@ -166,3 +166,14 @@ def test_module_exports() -> None:
         "icu_windows",
         "sample_adt",
     }
+
+
+def test_enrich_locations_adds_ed_and_stepdown() -> None:
+    pack = _pack()
+    pack.tables["adt"] = {"params": {"enrich_locations": True}}
+    sp = _spine([3, 2, 4, 1], hid="He")  # ed(admit) -> stepdown -> icu -> ward
+    cats = [m.location_category for m in sample_adt(sp, pack, np.random.default_rng(0))]
+    assert cats[0] == "ed"  # admitted through the emergency department
+    assert "icu" in cats and "stepdown" in cats
+    ok = set(categories("adt", "location_category"))
+    assert all(c in ok for c in cats)  # still exact mCIDE

@@ -76,9 +76,18 @@ def sample_position(
     grid_step = grid_step_hours(pack)
 
     rows: list[PositionRow] = []
+    # Prone probabilities are pack-overridable so a derived pack can calibrate the
+    # overall prone rate to a fitted target while keeping proning concentrated in
+    # severe-hypoxemia windows (real prone prevalence is ~0.3%, far below the
+    # documented default that suited the un-fitted MIMIC pack).
+    block = pack.tables.get("position", {})
+    params = block.get("params", {}) if isinstance(block, dict) else {}
+    prob_severe = float(params.get("prone_prob_severe", _PRONE_PROB_SEVERE))
+    prob_other = float(params.get("prone_prob_otherwise", _PRONE_PROB_OTHERWISE))
+
     for idx in _position_intervals(spine.support_level, grid_step):
         severe = spine.resp_flag[idx] and spine.support_level[idx] >= IMV_MIN_SUPPORT_LEVEL
-        prone_prob = _PRONE_PROB_SEVERE if severe else _PRONE_PROB_OTHERWISE
+        prone_prob = prob_severe if severe else prob_other
         category = "prone" if rng.random() < prone_prob else "not_prone"
         rows.append(
             PositionRow(

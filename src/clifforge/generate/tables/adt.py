@@ -33,7 +33,12 @@ import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, UTC_DATETIME, grid_step_hours
+from clifforge.generate._common import (
+    ICU_MIN_SUPPORT_LEVEL,
+    IMV_MIN_SUPPORT_LEVEL,
+    UTC_DATETIME,
+    grid_step_hours,
+)
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["ICU_MIN_SUPPORT_LEVEL", "AdtMovement", "adt_frame", "icu_windows", "sample_adt"]
@@ -60,11 +65,31 @@ class AdtMovement:
     location_type: str | None
 
 
-def _location_segments(support_level: list[int]) -> list[tuple[str, int]]:
+def _category_for(level: int, idx: int, enrich: bool) -> str:
+    """Location category for an interval.
+
+    Default (un-fitted MIMIC pack): ``icu`` at/above the ICU threshold, else
+    ``ward``. Enriched (a derived pack sets ``enrich_locations``): the admission
+    interval is ``ed`` (patients arrive through the emergency department), the
+    high-flow/NIV tier is ``stepdown``, and invasive ventilation and above is
+    ``icu`` — matching the real ward/ed/icu/stepdown location mix.
+    """
+    if not enrich:
+        return "icu" if level >= ICU_MIN_SUPPORT_LEVEL else "ward"
+    if idx == 0:
+        return "ed"
+    if level >= IMV_MIN_SUPPORT_LEVEL:
+        return "icu"
+    if level >= ICU_MIN_SUPPORT_LEVEL:
+        return "stepdown"
+    return "ward"
+
+
+def _location_segments(support_level: list[int], *, enrich: bool = False) -> list[tuple[str, int]]:
     """Run-length-encode the acuity trajectory into ``(category, n_intervals)``."""
     segments: list[tuple[str, int]] = []
-    for level in support_level:
-        category = "icu" if level >= ICU_MIN_SUPPORT_LEVEL else "ward"
+    for idx, level in enumerate(support_level):
+        category = _category_for(level, idx, enrich)
         if segments and segments[-1][0] == category:
             prev_cat, prev_n = segments[-1]
             segments[-1] = (prev_cat, prev_n + 1)
@@ -92,10 +117,14 @@ def sample_adt(
     del rng  # deterministic from the spine; accepted for signature uniformity
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
     grid_step = grid_step_hours(pack)
+    block = pack.tables.get("adt", {})
+    enrich = (
+        bool(block.get("params", {}).get("enrich_locations")) if isinstance(block, dict) else False
+    )
 
     movements: list[AdtMovement] = []
     cursor = admit_dttm
-    for category, n_int in _location_segments(spine.support_level):
+    for category, n_int in _location_segments(spine.support_level, enrich=enrich):
         out = cursor + timedelta(hours=n_int * grid_step)
         movements.append(
             AdtMovement(

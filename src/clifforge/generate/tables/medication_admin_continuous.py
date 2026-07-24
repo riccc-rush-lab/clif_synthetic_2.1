@@ -25,12 +25,19 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import numpy as np
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate._common import IMV_MIN_SUPPORT_LEVEL, UTC_DATETIME, grid_step_hours
+from clifforge.generate._common import (
+    ICU_MIN_SUPPORT_LEVEL,
+    IMV_MIN_SUPPORT_LEVEL,
+    UTC_DATETIME,
+    grid_step_hours,
+)
+from clifforge.generate.sampling import categorical
 from clifforge.generate.spine import SpineFrame
 
 __all__ = [
@@ -49,6 +56,44 @@ _DOSE_RANGE: dict[str, tuple[float, float]] = {
     _SEDATIVE: (5.0, 50.0),
 }
 _DEFAULT_STOP_HAZARD = 0.2
+
+# --- fitted path (used when the pack carries a med_category_marginal) --------- #
+#: Vasopressors/inotropes — a sampled infusion of one of these is *placed* in a
+#: cardiovascular-failure window, preserving the R12 coupling while the med itself
+#: is drawn from the fitted marginal (so the med_category distribution matches real).
+_VASOPRESSORS = frozenset(
+    {
+        "norepinephrine",
+        "phenylephrine",
+        "vasopressin",
+        "epinephrine",
+        "dopamine",
+        "dobutamine",
+        "angiotensin",
+        "milrinone",
+        "isoproterenol",
+    }
+)
+#: Continuous sedatives/analgesics — placed in invasive-ventilation windows.
+_SEDATIVES = frozenset(
+    {
+        "propofol",
+        "fentanyl",
+        "dexmedetomidine",
+        "midazolam",
+        "ketamine",
+        "remifentanil",
+        "morphine",
+        "hydromorphone",
+        "lorazepam",
+        "pentobarbital",
+    }
+)
+#: Documented infusion volume per ICU interval, and mean dose-change events per
+#: infusion (calibrated so mar_action shares ~ real: dose_change > start = stop).
+_INFUSIONS_PER_ICU_INTERVAL = 0.3
+_DOSE_CHANGE_MEAN = 1.28
+_FLUID_UNIT = "mL/hr"
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
 
@@ -120,6 +165,75 @@ def _infusion_rows(
     return rows
 
 
+def _dose_for(med: str, rng: np.random.Generator) -> tuple[float, str]:
+    """Documented un-fitted dose + unit by med class (dose is not the fidelity target)."""
+    if med in _VASOPRESSORS:
+        return round(float(rng.uniform(0.02, 0.5)), 4), _DOSE_UNIT
+    if med in _SEDATIVES:
+        return round(float(rng.uniform(5.0, 50.0)), 2), _DOSE_UNIT
+    return round(float(rng.uniform(10.0, 250.0)), 1), _FLUID_UNIT
+
+
+def _fitted_infusions(
+    hid: str,
+    spine: SpineFrame,
+    params: dict[str, Any],
+    rng: np.random.Generator,
+    admit_dttm: datetime,
+    grid_step: float,
+    order_seq: Iterator[int],
+) -> list[MedAdminRow]:
+    """Marginal-driven infusions: med drawn from the fitted marginal, *placed* by acuity.
+
+    Sampling *which* drug from ``med_category_marginal`` makes the med_category
+    distribution match real; placing vasopressors in cv-failure windows and
+    sedatives in ventilation windows preserves the R12 couplings. Each infusion is
+    a start + dose-changes + a zero-dose stop (AE3), matching the real mar_action mix.
+    """
+    marginal: dict[str, float] = params["med_category_marginal"]
+    icu = [t for t, lvl in enumerate(spine.support_level) if lvl >= ICU_MIN_SUPPORT_LEVEL]
+    if not icu:
+        return []
+    cv = [t for t in icu if spine.cv_flag[t]]
+    imv = [t for t, lvl in enumerate(spine.support_level) if lvl >= IMV_MIN_SUPPORT_LEVEL]
+
+    def pick_interval(med: str) -> int:
+        if med in _VASOPRESSORS and cv:
+            return cv[int(rng.integers(len(cv)))]
+        if med in _SEDATIVES and imv:
+            return imv[int(rng.integers(len(imv)))]
+        return icu[int(rng.integers(len(icu)))]
+
+    def at(interval: int) -> datetime:
+        return admit_dttm + timedelta(hours=(interval + float(rng.random())) * grid_step)
+
+    n = int(rng.poisson(_INFUSIONS_PER_ICU_INTERVAL * len(icu)))
+    rows: list[MedAdminRow] = []
+    for _ in range(n):
+        med = categorical(marginal, rng)
+        unit = _dose_for(med, rng)[1]
+        order_id = f"{hid}-{next(order_seq)}"
+        start_t = pick_interval(med)
+        start = at(start_t)
+
+        def make(
+            dttm: datetime,
+            dose: float,
+            action: str,
+            _med: str = med,
+            _u: str = unit,
+            _oid: str = order_id,
+        ) -> MedAdminRow:
+            return MedAdminRow(hid, _oid, dttm, _med, _ROUTE, round(dose, 4), _u, action)
+
+        rows.append(make(start, _dose_for(med, rng)[0], "start"))
+        for _c in range(int(rng.poisson(_DOSE_CHANGE_MEAN))):
+            rows.append(make(at(start_t), _dose_for(med, rng)[0], "dose_change"))
+        rows.append(make(at(start_t), 0.0, "stop"))  # AE3: new zero-dose stop row
+    rows.sort(key=lambda r: (r.admin_dttm, r.med_category, r.mar_action_category))
+    return rows
+
+
 def sample_medication_admin_continuous(
     spine: SpineFrame,
     pack: ParamPack,
@@ -128,14 +242,23 @@ def sample_medication_admin_continuous(
     hospitalization_id: str | None = None,
     admit_dttm: datetime = _DEFAULT_ADMIT,
 ) -> list[MedAdminRow]:
-    """Emit one hospitalization's continuous-med rows (R11, AE3, R22)."""
+    """Emit one hospitalization's continuous-med rows (R11, AE3, R22).
+
+    Uses the fitted marginal path when the pack carries ``med_category_marginal``;
+    otherwise the documented two-med (vasopressor + sedative) coupling path — which
+    keeps age-less/marginal-less packs (including the demo) byte-identical.
+    """
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
     grid_step = grid_step_hours(pack)
     order_seq = iter(range(10**6))
 
+    block = pack.tables.get("medication_admin_continuous", {})
+    params = block.get("params", {}) if isinstance(block, dict) else {}
+    if params.get("med_category_marginal"):
+        return _fitted_infusions(hid, spine, params, rng, admit_dttm, grid_step, order_seq)
+
     vaso_active = list(spine.cv_flag)
     sed_active = [level >= IMV_MIN_SUPPORT_LEVEL for level in spine.support_level]
-
     rows = _infusion_rows(
         hid, _VASOPRESSOR, vaso_active, pack, rng, admit_dttm, grid_step, order_seq
     )

@@ -145,3 +145,38 @@ def test_module_exports() -> None:
         "medication_admin_continuous_frame",
         "sample_medication_admin_continuous",
     }
+
+
+def test_fitted_marginal_path_matches_distribution_and_keeps_coupling() -> None:
+    # A pack with med_category_marginal switches to the fitted path: meds are drawn
+    # from the marginal (distribution matches) but vasopressors are PLACED in
+    # cv-failure windows (coupling preserved).
+    import numpy as np
+
+    pack = _pack(stop_hazard=0.0)
+    pack.tables["medication_admin_continuous"]["params"]["med_category_marginal"] = {
+        "sodium_chloride": 0.5,
+        "norepinephrine": 0.3,
+        "propofol": 0.2,
+    }
+    from datetime import UTC, datetime
+
+    admit = datetime(2020, 1, 1, tzinfo=UTC)
+    seen: dict[str, int] = {}
+    norepi_in_cv = norepi_total = 0
+    rng = np.random.default_rng(0)
+    for i in range(300):
+        sp = _spine([4] * 30, [True] * 15 + [False] * 15, hid=f"H{i}")
+        for r in sample_medication_admin_continuous(sp, pack, rng, hospitalization_id=f"H{i}"):
+            seen[r.med_category] = seen.get(r.med_category, 0) + 1
+            if r.med_category == "norepinephrine" and r.mar_action_category == "start":
+                norepi_total += 1
+                if int((r.admin_dttm - admit).total_seconds() // 3600) < 15:
+                    norepi_in_cv += 1
+    assert set(seen) <= {"sodium_chloride", "norepinephrine", "propofol"}  # only marginal meds
+    assert (
+        "sodium_chloride" in seen and seen["sodium_chloride"] > seen["norepinephrine"]
+    )  # matches shape
+    assert (
+        norepi_total > 0 and norepi_in_cv == norepi_total
+    )  # every vasopressor start in a cv window

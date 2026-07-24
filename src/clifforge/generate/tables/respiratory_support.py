@@ -58,9 +58,17 @@ DEVICE_SET_FIELDS: dict[str, tuple[str, ...]] = {
     "CPAP": ("fio2_set", "peep_set"),
     "High Flow NC": ("fio2_set", "lpm_set"),
     "Nasal Cannula": ("lpm_set",),
+    "Face Mask": (),
     "Trach Collar": (),
     "Room Air": (),
 }
+
+#: When a derived pack sets ``enrich_devices``, each stay draws one non-invasive
+#: oxygen device (used at the low-flow/NIV tiers) from these documented options,
+#: so the device_category mix includes Face Mask / NIPPV rather than only High
+#: Flow NC — matching the real distribution while keeping segments stable.
+_LOW_FLOW_DEVICES = ("Nasal Cannula", "Nasal Cannula", "Face Mask")
+_NIV_DEVICES = ("High Flow NC", "High Flow NC", "High Flow NC", "NIPPV", "CPAP", "Face Mask")
 
 #: Device -> ventilator mode_category (only ventilated devices carry a mode).
 _DEVICE_MODE: dict[str, str | None] = {
@@ -134,12 +142,27 @@ def sample_respiratory_support(
     if not spine.support_level:
         return []  # empty spine -> no device segments (match the sibling generators)
 
+    # Per-stay non-invasive devices (drawn once so segments stay stable), used
+    # only when a derived pack enables device enrichment.
+    block = pack.tables.get("respiratory_support", {})
+    enrich = (
+        bool(block.get("params", {}).get("enrich_devices")) if isinstance(block, dict) else False
+    )
+    low_flow = (
+        _LOW_FLOW_DEVICES[int(rng.integers(len(_LOW_FLOW_DEVICES)))] if enrich else "Nasal Cannula"
+    )
+    niv = _NIV_DEVICES[int(rng.integers(len(_NIV_DEVICES)))] if enrich else "High Flow NC"
+
     # Per-interval (device, tracheostomy) with the latch + AE1 weaning rule.
     trach = 0
     imv_run = 0
     timeline: list[tuple[str, int]] = []
     for level, resp in zip(spine.support_level, spine.resp_flag, strict=True):
         device = _device_for(level, resp)
+        if enrich and device == "Nasal Cannula":
+            device = low_flow
+        elif enrich and device == "High Flow NC":
+            device = niv
         if device == "IMV":
             imv_run += 1
             if imv_run >= _TRACH_MIN_IMV_INTERVALS:
