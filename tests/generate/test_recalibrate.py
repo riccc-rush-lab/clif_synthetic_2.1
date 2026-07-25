@@ -92,22 +92,37 @@ def test_recalibrate_does_not_mutate_input() -> None:
     assert pack.tables["spine"]["params"]["support_level_start_dist"]["4"] == before
 
 
-def test_start_and_transition_mass_tempered_toward_level_two() -> None:
-    out = recalibrate_to_network_median(_pack()).tables["spine"]["params"]
+def test_start_law_shaped_to_icu_conditioned_peak_target() -> None:
+    out = recalibrate_to_network_median(_pack(), peak_imv_target=0.28).tables["spine"]["params"]
     start = out["support_level_start_dist"]
-    # High-acuity start mass is shed and level-2 gains it.
-    assert start["4"] < 0.29 and start["2"] > 0.1
+    # ICU-conditioned target: the non-ventilated ICU mass sits at level 2 (~1 - imv),
+    # every stay peaks at the ICU floor or above, and no mass starts below level 2.
+    assert abs(start["2"] - 0.72) < 0.02
+    assert start.get("0", 0.0) == 0.0 and start.get("1", 0.0) == 0.0
+    assert 0.0 < start["4"] < 0.29  # high-acuity mass spread realistically, not piled
     # Escalation to level 4 is tempered in every row that had it.
     row = out["support_level_transition_matrix"]["1"]
-    assert row["4"] < 0.5 and row["2"] > 0.0
+    assert row["4"] < 0.5 and row["1"] > 0.0
+
+
+def test_network_median_peak_target_is_icu_conditioned() -> None:
+    from clifforge.generate.recalibrate import _network_median_peak_target
+
+    # A real profile with non-ICU L0/L1 mass and an L4-heavy high band.
+    real = {"0": 0.01, "1": 0.34, "2": 0.07, "3": 0.19, "4": 0.34, "5": 0.05}
+    target = _network_median_peak_target(real, imv_target=0.41)
+    assert "0" not in target and "1" not in target  # ICU-conditioned: no sub-ICU peak
+    assert abs(target["2"] - 0.59) < 1e-9  # non-ventilated ICU floor = 1 - imv
+    assert abs(sum(target[k] for k in ("3", "4", "5")) - 0.41) < 1e-9  # reaches-IMV rate held
+    assert target["4"] > target["3"] > target["5"]  # real high-acuity shape preserved
 
 
 def test_sojourns_scaled_and_mortality_scaled() -> None:
     out = recalibrate_to_network_median(_pack(expired_rate=0.2)).tables["spine"]["params"]
-    # Level-1 sojourn scale (params[2]) multiplied by the default 3.4x.
-    assert out["support_level_sojourn"]["1"]["params"][2] == 5.0 * 3.4
-    # Peak mortality scaled by the default 0.74.
-    assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.74) < 1e-9
+    # Level-1 sojourn scale (params[2]) multiplied by the default 3.2x.
+    assert out["support_level_sojourn"]["1"]["params"][2] == 5.0 * 3.2
+    # Peak mortality scaled by the default 0.60.
+    assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.60) < 1e-9
 
 
 def test_generator_paths_enabled() -> None:
@@ -186,7 +201,7 @@ def test_prolonged_archetype_ladders_the_organs() -> None:
         lvl, flags, 24.0, 1.0, np.random.default_rng(0), mix={"prolonged": 1.0}
     )
     assert flags["resp_flag"][-1] and flags["cv_flag"][-1] and flags["renal_flag"][-1]
-    assert max(lvl) >= 5
+    assert max(lvl) >= 4  # laddered escalation tops at high vent (L4), not the ceiling
 
 
 def test_terminal_archetypes_vary_across_stays() -> None:

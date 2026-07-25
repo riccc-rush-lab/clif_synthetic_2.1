@@ -13,12 +13,13 @@ stay of the measurements a real multi-day ICU course accumulates, leaving stays
 :func:`recalibrate_to_network_median` applies one principled transform whose
 targets are all *measured real quantities*, not free knobs:
 
-* **Temper escalation, don't discharge.** High-acuity transition mass (to levels
-  3-5) and high-acuity start mass are re-routed to level 2 (ICU, non-intubated —
-  the "sick but surviving" zone), and premature ward discharge is damped. This
-  lowers the fraction reaching invasive ventilation and lowers peak-coupled
-  mortality *without shortening the stay* — the opposite of trimming the
-  trajectory to hit a rate.
+* **Temper escalation and realign the peak-acuity shape.** High-acuity transition
+  mass (to levels 3-5) is tempered toward recovery, and the peak-acuity
+  distribution is shaped through the start law to an ICU-conditioned, real-shape
+  target at the network-median ventilation rate (see :func:`_network_median_peak_target`)
+  — so the fraction reaching invasive ventilation and peak-coupled mortality land
+  at the network median *without shortening the stay* and with a realistically
+  spread acuity mix, the opposite of trimming the trajectory to hit a rate.
 * **Scale sojourns to real LOS.** Level dwell-times are scaled (on the fitted
   distribution's scale parameter, preserving family and shape) so hospital and
   ICU length-of-stay medians match the real cohort — which restores per-stay
@@ -58,11 +59,6 @@ _HIGH_LEVELS: tuple[str, ...] = ("3", "4", "5")
 #: values to the outlier-clamp bounds; these aggregate real dispersions replace it.
 #: (The estimator fix in ``fit._fit_ar1`` prevents this in future fits; this repairs
 #: packs already fitted with the un-robust estimator.)
-#: A fitted per-state σ above this multiple of the robust real dispersion is treated
-#: as a corrupted (pre-robust-estimator) value and replaced; physiologic re-fit σ
-#: sits at ~1× and is left untouched, preserving its heteroscedasticity.
-_CORRUPT_SIGMA_FACTOR: float = 3.0
-
 _ROBUST_VITAL_SD: dict[str, float] = {
     "heart_rate": 17.79,
     "sbp": 22.24,
@@ -72,6 +68,11 @@ _ROBUST_VITAL_SD: dict[str, float] = {
     "spo2": 2.97,
     "temp_c": 0.44,
 }
+
+#: A fitted per-state σ above this multiple of the robust real dispersion is treated
+#: as a corrupted (pre-robust-estimator) value and replaced; physiologic re-fit σ
+#: sits at ~1× and is left untouched, preserving its heteroscedasticity.
+_CORRUPT_SIGMA_FACTOR: float = 3.0
 
 
 def _renormalize(dist: dict[str, float]) -> None:
@@ -85,12 +86,14 @@ def _renormalize(dist: dict[str, float]) -> None:
 def _temper_transitions(
     matrix: dict[str, dict[str, float]], *, esc_keep: float, disch_damp: float
 ) -> None:
-    """Re-route escalation and premature-discharge mass toward level-2 ICU dwell.
+    """Temper high-acuity escalation and premature discharge.
 
     ``esc_keep`` is the fraction of each row's mass toward high levels that is
-    kept; the rest flows to level 2 (0.8) and level 1 (0.2) as recovery/de-
-    escalation. ``disch_damp`` multiplies the discharge probability (< 1 lengthens
-    stays); the freed mass returns to level 1. Rows are renormalized in place.
+    kept; the rest flows to level 1 (0.7) as recovery/de-escalation and level 2
+    (0.3), so the peak-acuity distribution is driven by the start law (shaped by
+    :func:`_apply_peak_target`) rather than by escalation. ``disch_damp`` multiplies
+    the discharge probability (< 1 lengthens stays); the freed mass returns to
+    level 1. Rows are renormalized in place.
     """
     for row in matrix.values():
         moved = 0.0
@@ -99,8 +102,8 @@ def _temper_transitions(
                 shed = row[level] * (1.0 - esc_keep)
                 row[level] -= shed
                 moved += shed
-        row["2"] = row.get("2", 0.0) + moved * 0.8
-        row["1"] = row.get("1", 0.0) + moved * 0.2
+        row["1"] = row.get("1", 0.0) + moved * 0.7  # de-escalate toward recovery (L1)
+        row["2"] = row.get("2", 0.0) + moved * 0.3
         if DISCHARGE_STATE in row:
             disch = row[DISCHARGE_STATE]
             freed = disch * (1.0 - disch_damp)
@@ -109,13 +112,43 @@ def _temper_transitions(
         _renormalize(row)
 
 
-def _temper_start(start_dist: dict[str, float], *, start_shift: float) -> None:
-    """Shift a fraction of high-acuity start mass down to level 2 (ICU, non-vent)."""
-    moved = sum(start_dist.get(level, 0.0) for level in _HIGH_LEVELS) * start_shift
-    for level in _HIGH_LEVELS:
-        if level in start_dist:
-            start_dist[level] *= 1.0 - start_shift
-    start_dist["2"] = start_dist.get("2", 0.0) + moved
+def _real_peak_profile(spine_params: dict[str, Any]) -> dict[str, float]:
+    """Real per-hospitalization peak-level distribution, from the fit's peak counts."""
+    by_peak = spine_params.get("expired_rate_by_peak_level", {})
+    counts = {k: float(v.get("n_hospitalizations", 0)) for k, v in by_peak.items()}
+    total = sum(counts.values()) or 1.0
+    return {k: n / total for k, n in counts.items()}
+
+
+def _network_median_peak_target(real: dict[str, float], imv_target: float) -> dict[str, float]:
+    """ICU-conditioned network-median peak-level target.
+
+    The dataset is an **ICU** cohort, so every stay peaks at the ICU floor (level 2)
+    or above — the full-cohort real profile's large level-0/1 mass is non-ICU floor
+    stays and must not be targeted. This puts the non-ventilated ICU mass at level 2
+    (``1 - imv_target``) and spreads the ventilated mass (``imv_target``, the
+    network-median reaches-IMV rate) across levels 3-5 in the **real** high-acuity
+    proportions — which corrects the earlier shape's under-representation of the
+    highest level while holding the ventilation rate.
+    """
+    high = {k: v for k, v in real.items() if int(k) >= 3}
+    hs = sum(high.values()) or 1.0
+    target = {k: imv_target * v / hs for k, v in high.items()}
+    target["2"] = 1.0 - imv_target  # ICU floor: non-ventilated ICU stays peak at L2
+    return target
+
+
+def _apply_peak_target(start_dist: dict[str, float], target: dict[str, float]) -> None:
+    """Shape the start distribution to the target peak profile (in place).
+
+    With escalation heavily tempered the trajectory's peak tracks its start level,
+    so setting the start law to the desired peak profile realigns the sampled
+    peak-acuity distribution across levels in real proportions instead of piling
+    it at level 2 (which the earlier level-2 routing produced).
+    """
+    start_dist.clear()
+    for level, prob in target.items():
+        start_dist[str(level)] = float(prob)
     _renormalize(start_dist)
 
 
@@ -169,11 +202,12 @@ def repair_vitals_dispersion(tables: dict[str, Any]) -> None:
 def recalibrate_to_network_median(
     pack: ParamPack,
     *,
-    esc_keep: float = 0.13,
-    start_shift: float = 0.72,
+    esc_keep: float = 0.04,
+    peak_imv_target: float = 0.28,
+    peak_target: dict[str, float] | None = None,
     disch_damp: float = 0.55,
     sojourn_multipliers: dict[str, float] | None = None,
-    mortality_scale: float = 0.74,
+    mortality_scale: float = 0.60,
     flag_target_prevalence: dict[str, float] | None = None,
     prone_prob_severe: float = 0.035,
     vasopressor_cv_boost: float = 3.0,
@@ -196,10 +230,14 @@ def recalibrate_to_network_median(
     _temper_transitions(
         spine["support_level_transition_matrix"], esc_keep=esc_keep, disch_damp=disch_damp
     )
-    _temper_start(spine["support_level_start_dist"], start_shift=start_shift)
+    # Realign the peak-acuity distribution to a realistic (real-shape) profile at the
+    # network-median ventilation rate, driven through the start law (peak tracks start
+    # once escalation is tempered) instead of piling peak mass at level 2.
+    target = peak_target or _network_median_peak_target(_real_peak_profile(spine), peak_imv_target)
+    _apply_peak_target(spine["support_level_start_dist"], target)
     _scale_sojourns(
         spine["support_level_sojourn"],
-        sojourn_multipliers or {"1": 3.4, "2": 2.2, "3": 1.8, "4": 1.8},
+        sojourn_multipliers or {"1": 3.2, "2": 4.6, "3": 2.8, "4": 2.8},
     )
     for cell in spine["expired_rate_by_peak_level"].values():
         cell["expired_rate"] = min(1.0, cell["expired_rate"] * mortality_scale)

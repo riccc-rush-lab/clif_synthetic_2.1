@@ -333,8 +333,8 @@ def _apply_terminal_deterioration(
             flags["resp_flag"][i] = True
             flags["cv_flag"][i] = True
             flags["renal_flag"][i] = True
-        else:  # prolonged — laddered multi-organ failure
-            support_level[i] = max(support_level[i], 3 + int(round(2.0 * frac)))
+        else:  # prolonged — laddered multi-organ failure, topping at high vent (L4)
+            support_level[i] = max(support_level[i], 3 + int(round(frac)))
             flags["resp_flag"][i] = True
             if frac >= 0.34:
                 flags["cv_flag"][i] = True
