@@ -16,7 +16,13 @@ from clifforge.generate.recalibrate import (
     recalibrate_to_network_median,
     repair_vitals_dispersion,
 )
-from clifforge.generate.spine import FLAG_NAMES, SpineFrame, sample_spine
+from clifforge.generate.spine import (
+    FLAG_NAMES,
+    SpineFrame,
+    _apply_terminal_deterioration,
+    _pick_terminal_archetype,
+    sample_spine,
+)
 from clifforge.generate.tables.labs import _panel_intervals
 from clifforge.generate.tables.medication_admin_continuous import (
     _VASOPRESSORS,
@@ -86,22 +92,56 @@ def test_recalibrate_does_not_mutate_input() -> None:
     assert pack.tables["spine"]["params"]["support_level_start_dist"]["4"] == before
 
 
-def test_start_and_transition_mass_tempered_toward_level_two() -> None:
-    out = recalibrate_to_network_median(_pack()).tables["spine"]["params"]
+def test_start_law_shaped_to_icu_conditioned_peak_target() -> None:
+    out = recalibrate_to_network_median(_pack(), peak_imv_target=0.28).tables["spine"]["params"]
     start = out["support_level_start_dist"]
-    # High-acuity start mass is shed and level-2 gains it.
-    assert start["4"] < 0.29 and start["2"] > 0.1
+    # ICU-conditioned target: the non-ventilated ICU mass sits at level 2 (~1 - imv),
+    # every stay peaks at the ICU floor or above, and no mass starts below level 2.
+    assert abs(start["2"] - 0.72) < 0.02
+    assert start.get("0", 0.0) == 0.0 and start.get("1", 0.0) == 0.0
+    assert 0.0 < start["4"] < 0.29  # high-acuity mass spread realistically, not piled
     # Escalation to level 4 is tempered in every row that had it.
     row = out["support_level_transition_matrix"]["1"]
-    assert row["4"] < 0.5 and row["2"] > 0.0
+    assert row["4"] < 0.5 and row["1"] > 0.0
+
+
+def test_network_median_peak_target_is_icu_conditioned() -> None:
+    from clifforge.generate.recalibrate import _network_median_peak_target
+
+    # A real profile with non-ICU L0/L1 mass and an L4-heavy high band.
+    real = {"0": 0.01, "1": 0.34, "2": 0.07, "3": 0.19, "4": 0.34, "5": 0.05}
+    target = _network_median_peak_target(real, imv_target=0.41)
+    assert "0" not in target and "1" not in target  # ICU-conditioned: no sub-ICU peak
+    assert abs(target["2"] - 0.59) < 1e-9  # non-ventilated ICU floor = 1 - imv
+    assert abs(sum(target[k] for k in ("3", "4", "5")) - 0.41) < 1e-9  # reaches-IMV rate held
+    assert target["4"] > target["3"] > target["5"]  # real high-acuity shape preserved
 
 
 def test_sojourns_scaled_and_mortality_scaled() -> None:
     out = recalibrate_to_network_median(_pack(expired_rate=0.2)).tables["spine"]["params"]
-    # Level-1 sojourn scale (params[2]) multiplied by the default 3.4x.
-    assert out["support_level_sojourn"]["1"]["params"][2] == 5.0 * 3.4
-    # Peak mortality scaled by the default 0.74.
-    assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.74) < 1e-9
+    # Level-1 sojourn scale (params[2]) multiplied by the default 3.2x.
+    assert out["support_level_sojourn"]["1"]["params"][2] == 5.0 * 3.2
+    # Peak mortality scaled by the default 0.66.
+    assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.66) < 1e-9
+
+
+def test_derivative_rate_overrides_propagate() -> None:
+    # Users spin derivatives by overriding rates; the overrides must reach the pack.
+    out = recalibrate_to_network_median(
+        _pack(),
+        peak_imv_target=0.60,
+        crrt_prob=0.50,
+        flag_target_prevalence={
+            "resp_flag": 0.4,
+            "cv_flag": 0.50,
+            "renal_flag": 0.1,
+            "neuro_flag": 0.1,
+        },
+    ).tables
+    start = out["spine"]["params"]["support_level_start_dist"]
+    assert sum(start.get(k, 0.0) for k in ("3", "4", "5")) > 0.5  # higher IMV target
+    assert out["crrt_therapy"]["params"]["crrt_prob"] == 0.50
+    assert out["spine"]["params"]["flag_target_prevalence"]["cv_flag"] == 0.50
 
 
 def test_generator_paths_enabled() -> None:
@@ -124,26 +164,92 @@ def test_repair_vitals_sets_robust_sigma_and_clamps_mean() -> None:
     assert tables["vitals"]["params"]["spo2_ar1_by_state"]["1"]["mean"] <= 100.0
 
 
-# --- terminal deterioration ------------------------------------------------ #
+def test_repair_vitals_leaves_physiologic_refit_sigma_untouched() -> None:
+    # A pack from the robust re-fit carries physiologic, heteroscedastic per-state
+    # sigma; repair must be a no-op so that state-dependent variance is preserved (KTD2).
+    tables = {
+        "vitals": {
+            "params": {
+                "map_ar1_by_state": {
+                    "2": {"mean": 80.6, "phi": 0.66, "sigma": 11.18},
+                    "5": {"mean": 73.4, "phi": 0.66, "sigma": 8.85},
+                }
+            }
+        }
+    }
+    repair_vitals_dispersion(tables)
+    mp = tables["vitals"]["params"]["map_ar1_by_state"]
+    assert (
+        mp["2"]["sigma"] == 11.18 and mp["5"]["sigma"] == 8.85
+    )  # unchanged, still heteroscedastic
 
 
-def test_terminal_deterioration_escalates_dying_tail() -> None:
-    # expired_rate 1.0 -> always expires; terminal window escalates the tail.
+# --- terminal deterioration (heterogeneous archetypes) --------------------- #
+
+
+def _blank_flags(n: int) -> dict[str, list[bool]]:
+    return {name: [False] * n for name in FLAG_NAMES}
+
+
+def test_comfort_archetype_withdraws_support() -> None:
+    # Withdrawal: acuity is de-escalated near death while organ failure persists.
+    lvl = [4] * 30
+    flags = _blank_flags(30)
+    _apply_terminal_deterioration(
+        lvl, flags, 24.0, 1.0, np.random.default_rng(0), mix={"comfort": 1.0}
+    )
+    assert lvl[-1] < 4  # support withdrawn (acuity falls)
+    assert flags["renal_flag"][-1]  # rising renal markers persist
+
+
+def test_abrupt_archetype_is_a_short_steep_collapse() -> None:
+    lvl = [2] * 30
+    flags = _blank_flags(30)
+    _apply_terminal_deterioration(
+        lvl, flags, 24.0, 1.0, np.random.default_rng(0), mix={"abrupt": 1.0}
+    )
+    changed = [i for i, v in enumerate(lvl) if v > 2]
+    assert changed and min(changed) > 30 - 24  # only a short tail (window // 3) escalated
+    assert max(lvl) >= 5  # to the acuity ceiling
+
+
+def test_prolonged_archetype_ladders_the_organs() -> None:
+    lvl = [2] * 30
+    flags = _blank_flags(30)
+    _apply_terminal_deterioration(
+        lvl, flags, 24.0, 1.0, np.random.default_rng(0), mix={"prolonged": 1.0}
+    )
+    assert flags["resp_flag"][-1] and flags["cv_flag"][-1] and flags["renal_flag"][-1]
+    assert max(lvl) >= 4  # laddered escalation tops at high vent (L4), not the ceiling
+
+
+def test_terminal_archetypes_vary_across_stays() -> None:
+    seen = {
+        _pick_terminal_archetype(
+            {"abrupt": 0.3, "prolonged": 0.5, "comfort": 0.2}, np.random.default_rng(s)
+        )
+        for s in range(200)
+    }
+    assert len(seen) >= 2  # dying courses are not a single stereotyped shape
+
+
+def test_aggregate_escalation_dominates_but_not_uniform() -> None:
+    # ~80% (abrupt + prolonged) escalate terminally; ~20% (comfort) do not — so the
+    # aggregate decedent decline is preserved while individual courses vary.
     pack = recalibrate_to_network_median(_pack(expired_rate=1.0), terminal_deterioration_hours=24.0)
-    sp = sample_spine(pack, np.random.default_rng(0), hospitalization_id="Hd")
-    assert sp.outcome == "expired"
-    n_term = 24  # grid_step 1.0h
-    tail = sp.support_level[-min(n_term, sp.n_intervals) :]
-    assert max(tail) >= 4  # escalated into invasive-ventilation acuity
-    assert sp.cv_flag[-1] and sp.resp_flag[-1]  # organ failure active at death
+    n, high = 200, 0
+    for s in range(n):
+        sp = sample_spine(pack, np.random.default_rng(s), hospitalization_id=f"H{s}")
+        if max(sp.support_level[-24:]) >= 4:
+            high += 1
+    assert 0.6 < high / n < 0.95
 
 
-def test_survivors_are_not_deteriorated() -> None:
-    pack = recalibrate_to_network_median(_pack(expired_rate=0.0), terminal_deterioration_hours=24.0)
-    sp = sample_spine(pack, np.random.default_rng(1), hospitalization_id="Ha")
-    assert sp.outcome == "alive"
-    # No forced terminal escalation: the alive tail need not reach L4+.
-    # (This is probabilistic-free — deterioration only runs for expired stays.)
+def test_terminal_deterioration_is_deterministic() -> None:
+    pack = recalibrate_to_network_median(_pack(expired_rate=1.0), terminal_deterioration_hours=24.0)
+    a = sample_spine(pack, np.random.default_rng(3), hospitalization_id="Hd")
+    b = sample_spine(pack, np.random.default_rng(3), hospitalization_id="Hd")
+    assert a.support_level == b.support_level and a.cv_flag == b.cv_flag
 
 
 # --- gated generator paths ------------------------------------------------- #
