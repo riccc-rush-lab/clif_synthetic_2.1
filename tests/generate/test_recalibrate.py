@@ -125,6 +125,25 @@ def test_sojourns_scaled_and_mortality_scaled() -> None:
     assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.66) < 1e-9
 
 
+def test_derivative_rate_overrides_propagate() -> None:
+    # Users spin derivatives by overriding rates; the overrides must reach the pack.
+    out = recalibrate_to_network_median(
+        _pack(),
+        peak_imv_target=0.60,
+        crrt_prob=0.50,
+        flag_target_prevalence={
+            "resp_flag": 0.4,
+            "cv_flag": 0.50,
+            "renal_flag": 0.1,
+            "neuro_flag": 0.1,
+        },
+    ).tables
+    start = out["spine"]["params"]["support_level_start_dist"]
+    assert sum(start.get(k, 0.0) for k in ("3", "4", "5")) > 0.5  # higher IMV target
+    assert out["crrt_therapy"]["params"]["crrt_prob"] == 0.50
+    assert out["spine"]["params"]["flag_target_prevalence"]["cv_flag"] == 0.50
+
+
 def test_generator_paths_enabled() -> None:
     out = recalibrate_to_network_median(_pack()).tables
     assert out["respiratory_support"]["params"]["l2_resp_noninvasive"] is True
