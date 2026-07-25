@@ -121,8 +121,8 @@ def test_sojourns_scaled_and_mortality_scaled() -> None:
     out = recalibrate_to_network_median(_pack(expired_rate=0.2)).tables["spine"]["params"]
     # Level-1 sojourn scale (params[2]) multiplied by the default 3.2x.
     assert out["support_level_sojourn"]["1"]["params"][2] == 5.0 * 3.2
-    # Peak mortality scaled by the default 0.60.
-    assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.60) < 1e-9
+    # Peak mortality scaled by the default 0.66.
+    assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.66) < 1e-9
 
 
 def test_generator_paths_enabled() -> None:

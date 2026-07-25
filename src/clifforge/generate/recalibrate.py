@@ -207,9 +207,9 @@ def recalibrate_to_network_median(
     peak_target: dict[str, float] | None = None,
     disch_damp: float = 0.55,
     sojourn_multipliers: dict[str, float] | None = None,
-    mortality_scale: float = 0.60,
+    mortality_scale: float = 0.66,
     flag_target_prevalence: dict[str, float] | None = None,
-    prone_prob_severe: float = 0.035,
+    prone_prob_severe: float = 0.026,
     vasopressor_cv_boost: float = 3.0,
     lab_panel_interval_hours: float = 12.0,
     lab_ward_panel_interval_hours: float = 18.0,
@@ -253,7 +253,7 @@ def recalibrate_to_network_median(
     # target, active across ICU time (see spine.sample_spine).
     spine["flag_target_prevalence"] = flag_target_prevalence or {
         "resp_flag": 0.5,
-        "cv_flag": 0.30,
+        "cv_flag": 0.27,
         "renal_flag": 0.05,
         "neuro_flag": 0.2,
     }

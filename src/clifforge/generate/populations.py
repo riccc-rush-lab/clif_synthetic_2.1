@@ -17,6 +17,7 @@ from pathlib import Path
 import polars as pl
 
 from clifforge.fit.param_pack import ParamPack
+from clifforge.reference import categories
 
 __all__ = ["CHICAGO_ETHNICITY_TARGET", "CHICAGO_RACE_TARGET", "derive_chicago_population"]
 
@@ -45,15 +46,21 @@ _MED_RENAME: dict[str, str] = {
     "dextrose": "dextrose_other",
     "dextrose_in_water_d5w": "dextrose_5_water",
     "albumin_infusion": "albumin",
+    "magnesium": "magnesium_sulfate",
+    "aminocaproic": "aminocaproic_acid",
 }
-_MED_DROP: frozenset[str] = frozenset({"acetaminophen", "alteplase"})
+#: Canonical mCIDE ``med_category`` vocabulary; any med not mapping into it is
+#: dropped, so the emitted marginal can never carry a non-conformant category.
+_VALID_MED_CATEGORIES: frozenset[str] = frozenset(
+    categories("medication_admin_continuous", "med_category")
+)
 
 
 def _normalize_med(raw: str) -> str | None:
-    """Canonicalize a raw med_category string (or None to drop it)."""
+    """Canonicalize a raw med_category string to an mCIDE member (or None to drop)."""
     norm = raw.strip().lower().replace(" ", "_")
     norm = _MED_RENAME.get(norm, norm)
-    return None if norm in _MED_DROP else norm
+    return norm if norm in _VALID_MED_CATEGORIES else None
 
 
 def _proportions(counts: dict[str, int]) -> dict[str, float]:
