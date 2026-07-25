@@ -36,3 +36,7 @@ venv/
 
 # clifpy secondary-gate scratch output
 /output/
+
+# Compliance acknowledgment — a LOCAL, human-authored release record that may
+# carry reviewer identity. Never commit it; approval is kept in the local repo.
+/COMPLIANCE_ACK.md

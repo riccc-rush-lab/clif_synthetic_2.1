@@ -207,29 +207,56 @@ def _fitted_infusions(
     def at(interval: int) -> datetime:
         return admit_dttm + timedelta(hours=(interval + float(rng.random())) * grid_step)
 
-    n = int(rng.poisson(_INFUSIONS_PER_ICU_INTERVAL * len(icu)))
     rows: list[MedAdminRow] = []
-    for _ in range(n):
-        med = categorical(marginal, rng)
+
+    def emit(med: str, start_t: int) -> None:
+        """One infusion: start + dose-changes + a zero-dose stop (AE3)."""
         unit = _dose_for(med, rng)[1]
-        order_id = f"{hid}-{next(order_seq)}"
-        start_t = pick_interval(med)
-        start = at(start_t)
+        oid = f"{hid}-{next(order_seq)}"
 
-        def make(
-            dttm: datetime,
-            dose: float,
-            action: str,
-            _med: str = med,
-            _u: str = unit,
-            _oid: str = order_id,
-        ) -> MedAdminRow:
-            return MedAdminRow(hid, _oid, dttm, _med, _ROUTE, round(dose, 4), _u, action)
+        def make(dttm: datetime, dose: float, action: str) -> MedAdminRow:
+            return MedAdminRow(hid, oid, dttm, med, _ROUTE, round(dose, 4), unit, action)
 
-        rows.append(make(start, _dose_for(med, rng)[0], "start"))
+        rows.append(make(at(start_t), _dose_for(med, rng)[0], "start"))
         for _c in range(int(rng.poisson(_DOSE_CHANGE_MEAN))):
             rows.append(make(at(start_t), _dose_for(med, rng)[0], "dose_change"))
-        rows.append(make(at(start_t), 0.0, "stop"))  # AE3: new zero-dose stop row
+        rows.append(make(at(start_t), 0.0, "stop"))
+
+    # Guaranteed vasopressor for a cardiovascular-failure stay (R12): the marginal
+    # alone samples vasopressors only at their base frequency, so without this the
+    # vasopressor *stay*-rate tracks the med marginal instead of cv-failure
+    # prevalence. This restores the coupling on top of the marginal draws.
+    if cv:
+        emit(_VASOPRESSOR, cv[int(rng.integers(len(cv)))])
+
+    # Per-interval infusion volume. When a derived pack sets
+    # ``vasopressor_per_stay`` the vasopressor classes are removed from this
+    # LOS-scaling draw and left entirely to the per-stay cv path above: otherwise
+    # a realistic multi-day ICU stay accumulates so many marginal draws that
+    # nearly every stay eventually samples a pressor, inflating the vasopressor
+    # *stay*-rate far above its real prevalence. Sedation and other infusions
+    # still scale with stay length (a long ventilated stay genuinely has more).
+    draw_marginal = marginal
+    if params.get("vasopressor_per_stay"):
+        # Confine vasopressor use to cardiovascular-failure stays so the *stay*
+        # prevalence tracks cv-failure rate instead of climbing with stay length.
+        # Non-cv stays draw no pressors; cv stays draw from a marginal with the
+        # pressor weight boosted so the vasopressor *row-share* — concentrated in
+        # ~a third of stays — still matches the real cohort-wide share.
+        if cv:
+            boost = float(params.get("vasopressor_cv_boost", 1.0))
+            draw_marginal = {
+                m: (w * boost if m in _VASOPRESSORS else w) for m, w in marginal.items()
+            }
+        else:
+            draw_marginal = {m: w for m, w in marginal.items() if m not in _VASOPRESSORS}
+        total = sum(draw_marginal.values())
+        draw_marginal = {m: w / total for m, w in draw_marginal.items()} if total > 0 else marginal
+    n = int(rng.poisson(_INFUSIONS_PER_ICU_INTERVAL * len(icu)))
+    for _ in range(n):
+        med = categorical(draw_marginal, rng)
+        emit(med, pick_interval(med))
+
     rows.sort(key=lambda r: (r.admin_dttm, r.med_category, r.mar_action_category))
     return rows
 

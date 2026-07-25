@@ -60,6 +60,17 @@ def sample_crrt_therapy(
     grid_step = grid_step_hours(pack)
     device_id = f"{hid}-CRRT"
 
+    # Renal failure (rising creatinine/BUN) is common; continuous renal-replacement
+    # is a selective subset of it. A derived pack can set ``crrt_prob`` so only that
+    # fraction of renal-failure stays are actually dialyzed, decoupling CRRT
+    # prevalence from the renal-flag signal that also drives lab derangement. With
+    # the default (1.0) every renal-failure interval is emitted, unchanged.
+    block = pack.tables.get("crrt_therapy", {})
+    params = block.get("params", {}) if isinstance(block, dict) else {}
+    crrt_prob = float(params.get("crrt_prob", 1.0))
+    if crrt_prob < 1.0 and rng.random() >= crrt_prob:
+        return []
+
     rows: list[CrrtRow] = []
     for idx, renal in enumerate(spine.renal_flag):
         if not renal:

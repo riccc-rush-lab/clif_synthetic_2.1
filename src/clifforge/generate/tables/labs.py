@@ -96,14 +96,32 @@ def _cholesky(correlation: list[list[float]]) -> npt.NDArray[np.float64]:
     raise ValueError("lab correlation matrix is not positive semi-definite")
 
 
-def _panel_intervals(support_level: list[int], grid_step: float) -> list[int]:
-    """ICU interval indices at which to draw a lab panel (~daily within ICU)."""
+def _panel_intervals(
+    support_level: list[int],
+    grid_step: float,
+    *,
+    icu_hours: float = _LAB_PANEL_INTERVAL_HOURS,
+    ward_hours: float | None = None,
+) -> list[int]:
+    """Interval indices at which to draw a lab panel.
+
+    By default panels are drawn only inside ICU time, spaced ``icu_hours`` apart
+    (~daily). A derived pack can shorten ``icu_hours`` (real ICUs draw chem panels
+    roughly twice daily) and set ``ward_hours`` to also draw sparser panels during
+    non-ICU time — real labs span the whole hospital stay, not just the ICU
+    window, so ICU-only daily panels under-produce lab volume several-fold. With
+    the defaults (``ward_hours=None``) the schedule is unchanged.
+    """
     panels: list[int] = []
     last: int | None = None
     for idx, level in enumerate(support_level):
-        if level < ICU_MIN_SUPPORT_LEVEL:
+        if level >= ICU_MIN_SUPPORT_LEVEL:
+            interval = icu_hours
+        elif ward_hours is not None:
+            interval = ward_hours
+        else:
             continue
-        if last is None or (idx - last) * grid_step >= _LAB_PANEL_INTERVAL_HOURS:
+        if last is None or (idx - last) * grid_step >= interval:
             panels.append(idx)
             last = idx
     return panels
@@ -147,8 +165,14 @@ def sample_labs(
     presence_vec = np.array([presence.get(lab, 0.0) for lab in order], dtype=float)
     present_mask = rng.random(n) < presence_vec
 
+    icu_hours = float(params.get("panel_interval_hours", _LAB_PANEL_INTERVAL_HOURS))
+    ward_hours_raw = params.get("ward_panel_interval_hours")
+    ward_hours = float(ward_hours_raw) if ward_hours_raw is not None else None
+
     observations: list[LabObservation] = []
-    for interval_idx in _panel_intervals(spine.support_level, grid_step):
+    for interval_idx in _panel_intervals(
+        spine.support_level, grid_step, icu_hours=icu_hours, ward_hours=ward_hours
+    ):
         z = chol @ rng.standard_normal(n)  # (2) correlated latent draw per panel
         jitter = rng.random() * grid_step
         order_dttm = admit_dttm + timedelta(hours=interval_idx * grid_step + jitter)
