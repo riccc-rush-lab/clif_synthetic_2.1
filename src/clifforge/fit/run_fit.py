@@ -372,10 +372,15 @@ def run_fit(
 
     # --- lab co-measurement copula ----------------------------------------
     if "labs" in train_tables:
+        # Prefer the result time (real CLIF), but fall back to the order time when the
+        # result timestamp is absent — synthetic labs carry only ``lab_order_dttm``, so
+        # this lets the fit run on a synthetic dataset (fit-on-synthetic base pack).
+        lab_cols = _source_columns(tables["labs"])
+        labs_dttm = _GRID_DTTM["labs"] if _GRID_DTTM["labs"] in lab_cols else "lab_order_dttm"
         labs_grid = _grid_value_table(
             train_tables["labs"],
             admits,
-            dttm_col=_GRID_DTTM["labs"],
+            dttm_col=labs_dttm,
             category_col="lab_category",
             value_col="lab_value_numeric",
             config=config,

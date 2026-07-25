@@ -43,7 +43,7 @@ def write_manifest(out_dir: str | Path, *, spec: dict[str, Any] | str, seed: int
     for parquet in sorted(out.glob("clif_*.parquet")):
         rows = pl.scan_parquet(parquet).select(pl.len()).collect().item()
         tables[parquet.stem] = {"rows": int(rows), "sha256": _sha256(parquet)}
-    manifest = {
+    manifest: dict[str, Any] = {
         "generator_version": __version__,
         "spec": spec,
         "seed": seed,
@@ -55,7 +55,8 @@ def write_manifest(out_dir: str | Path, *, spec: dict[str, Any] | str, seed: int
 
 def read_manifest(out_dir: str | Path) -> dict[str, Any]:
     """Read a dataset's ``manifest.json``."""
-    return json.loads((Path(out_dir) / MANIFEST_NAME).read_text(encoding="utf-8"))
+    data: dict[str, Any] = json.loads((Path(out_dir) / MANIFEST_NAME).read_text(encoding="utf-8"))
+    return data
 
 
 def datasets_are_distinct(a: dict[str, Any], b: dict[str, Any]) -> bool:
