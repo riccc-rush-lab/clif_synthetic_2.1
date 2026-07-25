@@ -25,6 +25,10 @@ venv/
 # The committed n=100 demo dataset (R27) is an intentional exception.
 !demo_output/**
 
+# The committed large synthetic sample (~10k encounters) is an intentional
+# exception — the biggest sample that stays under GitHub's 100 MB/file limit.
+!sample_dataset/**
+
 # OS / IDE
 .DS_Store
 .idea/

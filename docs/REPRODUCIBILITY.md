@@ -1,0 +1,81 @@
+# Reproducibility & Methods
+
+Every artifact in this repository — the master dataset, the shareable base pack,
+and every derivative variant — is produced by a **deterministic, scripted, seeded**
+pipeline. Given the same inputs and seed, the output is **byte-for-byte identical**
+(verified: regenerating any dataset with the same spec + seed produces identical
+parquet files and identical content hashes).
+
+## The pipeline
+
+```
+real CLIF ──fit──▶ base pack ──derive──▶ population pack ──recalibrate──▶ generation pack ──sample──▶ dataset + manifest
+ (credentialed)   (aggregate)   (age/med/demographics)    (network-median)   (seeded, chunked)
+```
+
+Each stage is a documented function with no hidden state:
+
+| Stage | Entry point | What it does | Determinism |
+|---|---|---|---|
+| **Fit** | `clif-forge fit` / `clifforge.fit.run_fit` | Learns aggregate parameters only (marginals, transitions, per-state physiology, correlations, prevalences) from real CLIF; **no row-level data retained**, every cell gated at n ≥ 20. | Seeded patient split; robust estimators. |
+| **Derive** | `clifforge.generate.populations.derive_chicago_population` | Re-weights demographics, shifts age quantiles, fits the med marginal. Deep-copies the input pack. | Pure function of pack + aggregate real stats. |
+| **Recalibrate** | `clifforge.generate.recalibrate.recalibrate_to_network_median` | Reshapes acuity/LOS/rates to the network median; adds the length-aware generator paths and terminal deterioration. Deep-copies the input pack. | Documented parameters; no randomness. |
+| **Sample** | `clif-forge generate` / `clifforge.generate.orchestrator.generate_dataset` | Draws every table from the pack via a single `SeedSequence(seed)` spawned per encounter; conformance-gated before write. | `(seed, n, id_offset)` fully determines output (R22, AE6). |
+
+## Reproduce the committed artifacts
+
+**The large sample** (`sample_dataset/`, ~10k encounters) — reproduces byte-for-byte
+from the committed base pack, spec, and seed:
+
+```bash
+uv run clif-forge generate \
+    --spec sample_dataset/spec.toml --base-pack base_pack \
+    --n-patients 10000 --seed 42 --out ./reproduced
+# reproduced/manifest.json content hashes == sample_dataset/manifest.json
+```
+
+**A derivative variant** — any preset or spec is a reproducible recipe:
+
+```bash
+uv run clif-forge generate --preset high-acuity --n-patients 5000 --seed 7 --out ./variant
+```
+
+**The base pack** (credentialed, one-time authoring step, needs real CLIF):
+
+```bash
+uv run python scripts/build_base_pack.py \
+    --fitted-pack <fitted-pack> --real-dir <real-clif-dir> --out base_pack
+```
+
+**The full master deliverable** (credentialed):
+
+```bash
+uv run python scripts/generate_deliverable.py \
+    --base-pack <fitted-pack> --real-dir <real-clif-dir> --out <dir>
+```
+
+## Provenance record
+
+Every generated dataset writes a `manifest.json` sidecar recording the generator
+version, the resolved spec, the seed, and a per-table row count + SHA-256 content
+hash. This makes each dataset reproducible from its recipe and makes any two
+datasets provably distinct (`clifforge.manifest.datasets_are_distinct`).
+
+## What the tests guarantee
+
+- **Determinism** — identical `(seed, n, id_offset)` reproduces byte-identical output
+  (`tests/test_cli.py`, `tests/generate/test_variants_end_to_end.py`).
+- **Realism targets** — LOS, life-support rates, vitals autocorrelation, and lab
+  presence stay in the real range (`tests/eval/test_realism_targets.py`, skip-guarded
+  on the local pack).
+- **Conformance** — every generated table passes the CLIF 2.1 schema + mCIDE + bounds
+  gate before it is written; a non-conformant dataset cannot be produced.
+- **No mutation** — `derive_*` and `recalibrate_*` never mutate their input pack, so
+  one base pack seeds unlimited independent variants.
+
+## Data-use note
+
+The fit stage requires credentialed real CLIF data and emits only aggregate
+parameters. The committed `base_pack/` and synthetic datasets are aggregate-derived /
+fully synthetic (no PHI); their release is governed by the recorded compliance
+determination (see the release gate and `COMPLIANCE_ACK.md`).
