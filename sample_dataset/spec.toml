@@ -1,0 +1,2 @@
+# Master-equivalent sample: reproduces the shared master dataset at n=10000, seed 42.
+name = "master-sample"
