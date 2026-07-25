@@ -43,7 +43,23 @@ def test_generate_parses_flags() -> None:
     assert args.command == "generate"
     assert args.n_patients == 100
     assert args.seed == 42
-    assert args.pack == "data/param_packs/mimic"  # default pack location
+    assert args.pack is None and args.demo is False  # no pack by default; opt in via --pack/--demo
+
+
+def test_generate_demo_works_without_a_pack(tmp_path) -> None:
+    # A fresh clone has no fitted pack; --demo must produce a conformant dataset
+    # out of the box (the external self-service path).
+    out = tmp_path / "demo_out"
+    rc = main(["generate", "--n-patients", "8", "--seed", "1", "--demo", "--out", str(out)])
+    assert rc == 0
+    assert (out / "clif_hospitalization.parquet").exists()
+    assert (out / "clif_vitals.parquet").exists()
+
+
+def test_generate_without_pack_or_demo_errors(tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = main(["generate", "--n-patients", "5", "--out", str(tmp_path / "x")])
+    assert rc == 1
+    assert "--demo" in capsys.readouterr().err
 
 
 def test_rng_fixture_is_seed_reproducible(rng: np.random.Generator, seed: int) -> None:
@@ -67,6 +83,31 @@ def test_generate_dataset_is_deterministic(pack: ParamPack) -> None:
     for name in a.tables:
         assert a.tables[name].equals(b.tables[name]), f"{name} differs across identical seeds"
     assert a.truth.equals(b.truth)
+
+
+def test_id_offset_shifts_identifiers_for_chunked_generation(pack: ParamPack) -> None:
+    # Chunked large-cohort generation relies on id_offset producing correctly
+    # shifted, collision-free identifiers, and staying reproducible per chunk.
+    base = generate_dataset(pack, n_patients=5, seed=3)
+    shifted = generate_dataset(pack, n_patients=5, seed=3, id_offset=100)
+    assert base.tables["hospitalization"]["hospitalization_id"].to_list() == [
+        f"H{i}" for i in range(5)
+    ]
+    assert shifted.tables["hospitalization"]["hospitalization_id"].to_list() == [
+        f"H{100 + i}" for i in range(5)
+    ]
+    # Disjoint id ranges across chunks (no collisions when concatenated).
+    base_ids = set(base.tables["hospitalization"]["hospitalization_id"].to_list())
+    shifted_ids = set(shifted.tables["hospitalization"]["hospitalization_id"].to_list())
+    assert base_ids.isdisjoint(shifted_ids)
+    # Reproducible: identical (seed, id_offset) reproduces the chunk byte-for-byte.
+    again = generate_dataset(pack, n_patients=5, seed=3, id_offset=100)
+    assert shifted.tables["hospitalization"].equals(again.tables["hospitalization"])
+
+
+def test_id_offset_rejects_negative(pack: ParamPack) -> None:
+    with pytest.raises(ValueError, match="id_offset"):
+        generate_dataset(pack, n_patients=3, seed=1, id_offset=-1)
 
 
 def test_seed_actually_changes_output(pack: ParamPack) -> None:

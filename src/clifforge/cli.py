@@ -43,8 +43,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     generate.add_argument(
         "--pack",
-        default="data/param_packs/mimic",
-        help="Directory of the parameter pack to sample from.",
+        default=None,
+        help="Directory of a fitted parameter pack to sample from.",
+    )
+    generate.add_argument(
+        "--demo",
+        action="store_true",
+        help="Use the built-in synthetic demo pack (no real data or fit required). "
+        "Structurally valid CLIF 2.1 output for testing; not statistically calibrated.",
     )
 
     fit = sub.add_parser(
@@ -61,11 +67,20 @@ def build_parser() -> argparse.ArgumentParser:
 def _run_generate(args: argparse.Namespace) -> int:
     """Generate + gate + write a synthetic dataset; nonzero on any failure (R25)."""
     from clifforge.conformance.gate import ConformanceError
+    from clifforge.demo import demo_pack
     from clifforge.fit.param_pack import ParamPack
     from clifforge.generate.orchestrator import generate_dataset, write_dataset
 
+    if not args.demo and args.pack is None:
+        print(
+            "clif-forge generate: provide --pack <dir> (a fitted pack) or --demo "
+            "(built-in synthetic pack, no real data required).",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
-        pack = ParamPack.load(args.pack)
+        pack = demo_pack() if args.demo else ParamPack.load(args.pack)
         dataset = generate_dataset(pack, n_patients=args.n_patients, seed=args.seed)
         written = write_dataset(dataset, args.out)
     except ConformanceError as exc:
