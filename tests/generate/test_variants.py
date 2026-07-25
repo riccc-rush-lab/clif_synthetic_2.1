@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 
 from clifforge.demo import demo_pack
-from clifforge.variants import SpecError, VariantSpec, load_spec, spec_to_pack
+from clifforge.variants import (
+    SpecError,
+    VariantSpec,
+    list_presets,
+    load_preset,
+    load_spec,
+    spec_to_pack,
+)
 
 
 def _write(tmp_path: Path, text: str) -> Path:
@@ -88,3 +95,26 @@ def test_race_override_applies_without_real_data() -> None:
         "White": 0.5,
         "Black or African American": 0.5,
     }
+
+
+# --- preset library (U3) --------------------------------------------------- #
+
+
+def test_shipped_presets_are_listed() -> None:
+    names = list_presets()
+    assert {"high-acuity", "older-cohort", "sepsis-heavy"} <= set(names)
+
+
+def test_every_shipped_preset_validates() -> None:
+    # Guards against a broken example spec shipping.
+    for name in list_presets():
+        assert isinstance(load_preset(name), VariantSpec)
+
+
+def test_high_acuity_preset_raises_imv() -> None:
+    assert load_preset("high-acuity").imv > VariantSpec().imv
+
+
+def test_unknown_preset_raises() -> None:
+    with pytest.raises(SpecError, match="unknown preset"):
+        load_preset("does-not-exist")

@@ -27,7 +27,10 @@ from clifforge.generate.populations import (
 )
 from clifforge.generate.recalibrate import recalibrate_to_network_median
 
-__all__ = ["VariantSpec", "load_spec", "spec_to_pack"]
+__all__ = ["VariantSpec", "list_presets", "load_preset", "load_spec", "spec_to_pack"]
+
+#: Shipped example variant specs (repo-root ``presets/``); a preset *is* a spec.
+_PRESET_DIR = Path(__file__).resolve().parents[2] / "presets"
 
 _KNOWN_TOP = {"name", "n", "seed", "base_pack", "demographics", "rates"}
 _KNOWN_DEMOGRAPHICS = {"age_shift", "hispanic_frac", "race_target"}
@@ -42,8 +45,9 @@ class VariantSpec:
     n: int = 85_248
     seed: int = 2025
     base_pack: str | None = None
-    # demographics
-    age_shift: float = 2.5
+    # demographics — age_shift is *relative to the base pack* (0 = the base's age
+    # distribution); the master's own shift is already baked into the base pack.
+    age_shift: float = 0.0
     hispanic_frac: float | None = None
     race_target: dict[str, float] | None = None
     # illness rates (network-median master defaults)
@@ -112,6 +116,21 @@ def load_spec(path: str | Path) -> VariantSpec:
     """Load and validate a variant spec from a TOML file."""
     with Path(path).open("rb") as fh:
         return _parse(tomllib.load(fh))
+
+
+def list_presets() -> list[str]:
+    """Names of the shipped example variant specs."""
+    if not _PRESET_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in _PRESET_DIR.glob("*.toml"))
+
+
+def load_preset(name: str) -> VariantSpec:
+    """Load a shipped preset by name (a preset is just a variant spec)."""
+    path = _PRESET_DIR / f"{name}.toml"
+    if not path.exists():
+        raise SpecError(f"unknown preset {name!r}; available: {list_presets()}")
+    return load_spec(path)
 
 
 def spec_to_pack(
