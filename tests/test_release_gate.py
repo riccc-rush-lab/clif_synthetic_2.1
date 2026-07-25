@@ -73,10 +73,27 @@ def test_main_exit_codes(tmp_path: Path) -> None:
     assert main(["--ack", str(_write(tmp_path, _GOOD))]) == 0
 
 
-def test_repo_release_is_blocked_until_a_real_ack_is_recorded() -> None:
-    # The committed repo intentionally ships only the template, so a release is
-    # blocked until a human records the real acknowledgment.
+def test_repo_ships_only_a_placeholder_template_the_gate_rejects() -> None:
+    # The committed repo ships only the template, which the gate must reject as a
+    # placeholder. (Checks the template directly rather than the live
+    # COMPLIANCE_ACK.md, so a valid *local, uncommitted* approval does not flip
+    # this test — the real acknowledgment is deliberately never committed.)
     repo_root = Path(__file__).resolve().parents[1]
-    assert (repo_root / "COMPLIANCE_ACK.template.md").exists()
-    problems = check_acknowledgment(repo_root / "COMPLIANCE_ACK.md")
-    assert problems, "release gate must block until COMPLIANCE_ACK.md is recorded"
+    template = repo_root / "COMPLIANCE_ACK.template.md"
+    assert template.exists()
+    assert check_acknowledgment(template), "the template must be rejected as a placeholder"
+
+
+def test_recorded_acknowledgment_is_never_committed() -> None:
+    # The real acknowledgment may carry reviewer identity and is a local-only
+    # record; it must never be tracked in git (enforced via .gitignore).
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[1]
+    tracked = subprocess.run(
+        ["git", "ls-files", "COMPLIANCE_ACK.md"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    assert tracked.stdout.strip() == "", "COMPLIANCE_ACK.md must never be committed"
