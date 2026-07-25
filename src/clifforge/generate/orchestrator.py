@@ -163,10 +163,19 @@ def generate_dataset(
     *,
     n_patients: int,
     seed: int = 42,
+    id_offset: int = 0,
 ) -> GeneratedDataset:
-    """Generate and gate a full multi-table synthetic dataset (R22, R25, AE6)."""
+    """Generate and gate a full multi-table synthetic dataset (R22, R25, AE6).
+
+    ``id_offset`` shifts the numeric suffix of the emitted ``P{i}`` / ``H{i}``
+    identifiers, so a large cohort can be produced in independently-seeded chunks
+    (each with its own ``seed`` and a disjoint ``id_offset`` range) without
+    identifier collisions — the whole cohort need never be held in memory at once.
+    """
     if n_patients <= 0:
         raise ValueError("n_patients must be a positive integer")
+    if id_offset < 0:
+        raise ValueError("id_offset must be non-negative")
 
     child_seeds = np.random.SeedSequence(seed).spawn(n_patients)
 
@@ -175,7 +184,7 @@ def generate_dataset(
 
     for i, child in enumerate(child_seeds):
         rng = np.random.default_rng(child)
-        pid, hid = f"P{i}", f"H{i}"
+        pid, hid = f"P{id_offset + i}", f"H{id_offset + i}"
         admit = _admit_dttm(rng)
 
         spine = sample_spine(pack, rng, hospitalization_id=hid)

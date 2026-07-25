@@ -38,6 +38,7 @@ import polars as pl
 from clifforge.fit.estimators import DISCHARGE_STATE
 from clifforge.fit.param_pack import ParamPack
 from clifforge.generate import semimarkov
+from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL
 from clifforge.generate.semimarkov import SojournSampler
 
 __all__ = [
@@ -212,20 +213,39 @@ def sample_spine(
     )
     runs = _visits_to_intervals(visits, grid_step_hours, horizon_intervals)
 
-    support_level: list[int] = []
+    support_level = [level for level, n_int in runs for _ in range(n_int)]
     flags: dict[str, list[bool]] = {name: [] for name in FLAG_NAMES}
-    for level, n_int in runs:
-        prevalence = flag_prevalence.get(str(level), {})
-        # One draw per flag per run, broadcast across the run's intervals.
-        run_flags = {
-            name: bool(rng.random() < float(prevalence.get(name, 0.0))) for name in FLAG_NAMES
-        }
-        support_level.extend([level] * n_int)
+
+    target = params.get("flag_target_prevalence")
+    if target:
+        # Decoupled organ axes: each failure flag is drawn once per stay at a
+        # fitted *marginal* target (independent of the acuity-level distribution)
+        # and active across the stay's ICU time. This lets cardiovascular /
+        # renal failure — and thus vasopressor / CRRT prevalence — track their
+        # real rates even when the respiratory acuity distribution is shifted, so
+        # a single latent level no longer forces every organ support to move
+        # together. A stay with no ICU interval carries no active flag.
+        icu_mask = [level >= ICU_MIN_SUPPORT_LEVEL for level in support_level]
         for name in FLAG_NAMES:
-            flags[name].extend([run_flags[name]] * n_int)
+            has = bool(rng.random() < float(target.get(name, 0.0)))
+            flags[name] = [has and in_icu for in_icu in icu_mask]
+    else:
+        # Fitted per-level behaviour: one draw per flag per run at the level's
+        # prevalence (the flag marginal is then hostage to the level mix).
+        for level, n_int in runs:
+            prevalence = flag_prevalence.get(str(level), {})
+            run_flags = {
+                name: bool(rng.random() < float(prevalence.get(name, 0.0))) for name in FLAG_NAMES
+            }
+            for name in FLAG_NAMES:
+                flags[name].extend([run_flags[name]] * n_int)
 
     peak = max(support_level) if support_level else 0
     outcome = _sample_outcome(params, peak, rng)
+
+    term_hours = params.get("terminal_deterioration_hours")
+    if outcome == "expired" and term_hours:
+        _apply_terminal_deterioration(support_level, flags, float(term_hours), grid_step_hours, rng)
 
     return SpineFrame(
         hospitalization_id=hospitalization_id,
@@ -236,6 +256,41 @@ def sample_spine(
         neuro_flag=flags["neuro_flag"],
         outcome=outcome,
     )
+
+
+def _apply_terminal_deterioration(
+    support_level: list[int],
+    flags: dict[str, list[bool]],
+    hours: float,
+    grid_step_hours: float,
+    rng: np.random.Generator,
+) -> None:
+    """Escalate the final window of an expiring trajectory into multi-organ failure.
+
+    Real ICU deaths are preceded by physiologic deterioration — falling blood
+    pressure and oxygenation, rising renal markers, escalating support — that a
+    peak-coupled outcome alone does not produce (a patient can peak mid-stay and
+    then de-escalate, so the terminal intervals look benign). For an expiring
+    stay this ramps the last ``hours`` of acuity up toward the ceiling and turns
+    on the organ-failure flags, so the deterioration reaches every downstream
+    table through the spine's existing couplings (support-level state means drive
+    vitals down, the renal flag drives creatinine/BUN up) without any table
+    reading another (KTD-6). Acuity is only ever raised, never lowered.
+    """
+    n = len(support_level)
+    if n == 0:
+        return
+    n_term = max(1, round(hours / grid_step_hours))
+    start = max(0, n - n_term)
+    span = n - start
+    for i in range(start, n):
+        frac = (i - start + 1) / span  # 0..1 across the terminal window
+        target = 3 + int(round(2.0 * frac))  # ramp L3 -> L5 toward death
+        support_level[i] = max(support_level[i], target)
+        flags["resp_flag"][i] = True
+        flags["cv_flag"][i] = True
+        if frac >= 0.5:  # renal failure joins later in the cascade
+            flags["renal_flag"][i] = True
 
 
 def _sample_outcome(params: dict[str, Any], peak_level: int, rng: np.random.Generator) -> str:

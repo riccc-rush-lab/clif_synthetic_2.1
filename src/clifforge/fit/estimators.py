@@ -500,7 +500,25 @@ def fit_ar1_by_state(
 
 
 def _fit_ar1(x_prev: _F64, x_curr: _F64) -> dict[str, float]:
-    """OLS fit of x_t = mean + phi*(x_{t-1}-mean) + eps; phi clamped stationary."""
+    """OLS fit of x_t = mean + phi*(x_{t-1}-mean) + eps; phi clamped stationary.
+
+    Physiologic vital streams carry rare but extreme artifacts (device errors,
+    charting mistakes) whose magnitude dwarfs the true signal. Ordinary
+    mean/variance are not robust to them: a handful of 100000-mmHg readings
+    inflate ``sigma`` by orders of magnitude, which then dominates the generated
+    walk and pins values to the outlier-clamp bounds. Both series are trimmed to
+    a wide robust band (median +- 5 scaled-MAD, ~3.4 sd for a normal, so genuine
+    physiology is kept) before the OLS fit, so ``mean``/``phi``/``sigma`` reflect
+    the real distribution rather than its artifacts.
+    """
+    combined = np.concatenate([x_prev, x_curr])
+    med = float(np.median(combined))
+    mad = float(np.median(np.abs(combined - med)))
+    if mad > 0.0:
+        band = 5.0 * 1.4826 * mad
+        keep = (np.abs(x_prev - med) <= band) & (np.abs(x_curr - med) <= band)
+        if int(keep.sum()) >= 2:
+            x_prev, x_curr = x_prev[keep], x_curr[keep]
     mean = float(np.mean(np.concatenate([x_prev, x_curr])))
     cp = x_prev - mean
     cc = x_curr - mean

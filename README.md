@@ -31,9 +31,20 @@ models against.
 ## Usage
 
 ```bash
-# Generate a synthetic dataset (offline, no real data required)
-uv run clif-forge generate --n-patients 1000 --seed 42 --out ./output/ --pack ./data/param_packs/mimic
+# Generate from the built-in demo pack — works on a fresh clone, no real data,
+# no fit, no credential required.
+uv run clif-forge generate --n-patients 1000 --seed 42 --demo --out ./output/
+
+# Or generate from a pack you fitted to your own real CLIF data (see `fit` below).
+uv run clif-forge generate --n-patients 1000 --seed 42 --pack ./my-pack --out ./output/
 ```
+
+`--demo` uses a complete, hand-specified synthetic pack shipped in the package
+(`clifforge.demo`): it exercises every table and coupling and passes the
+conformance gate, so it is ideal for pipeline tests, CI fixtures, and agent/tool
+development — but it is **structural, not statistically calibrated**. Realistic,
+network-representative output requires fitting a pack to real CLIF statistics
+(`clif-forge fit`, which needs your own staged real CLIF data).
 
 A single `--seed` reproduces byte-identical output. Every table is run through
 the conformance gate before anything is written; any validation failure exits

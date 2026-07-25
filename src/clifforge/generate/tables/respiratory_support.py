@@ -102,12 +102,24 @@ class RespiratorySupportRow:
     set_values: dict[str, float]  # only the device's matrix fields, all in-bounds
 
 
-def _device_for(level: int, resp_failure: bool) -> str:
-    """Base device for an interval from acuity, escalated by respiratory failure."""
+def _device_for(level: int, resp_failure: bool, *, l2_noninvasive: bool = False) -> str:
+    """Base device for an interval from acuity, escalated by respiratory failure.
+
+    At the high-flow/NIV tier (level 2), respiratory failure escalates support.
+    By default that escalation is to IMV (the original coupling). When a derived
+    pack sets ``l2_resp_noninvasive`` the level-2 escalation is **non-invasive**
+    (NIPPV) instead — reserving IMV for the intubation tier (level >= 3) so that
+    IMV prevalence tracks the spine's ventilator acuity rather than the
+    respiratory-failure flag. This matters once stays reach realistic length: a
+    flag active across a long level-2 dwell would otherwise mint days of spurious
+    IMV for a patient the spine never intubated.
+    """
     if level >= IMV_MIN_SUPPORT_LEVEL:
         return "IMV"
     if level == 2:
-        return "IMV" if resp_failure else "High Flow NC"  # severe-hypoxemia escalation
+        if resp_failure:
+            return "NIPPV" if l2_noninvasive else "IMV"  # non-invasive vs intubation
+        return "High Flow NC"
     if level == 1:
         return "Nasal Cannula"
     return "Room Air"
@@ -145,9 +157,9 @@ def sample_respiratory_support(
     # Per-stay non-invasive devices (drawn once so segments stay stable), used
     # only when a derived pack enables device enrichment.
     block = pack.tables.get("respiratory_support", {})
-    enrich = (
-        bool(block.get("params", {}).get("enrich_devices")) if isinstance(block, dict) else False
-    )
+    params = block.get("params", {}) if isinstance(block, dict) else {}
+    enrich = bool(params.get("enrich_devices"))
+    l2_noninvasive = bool(params.get("l2_resp_noninvasive"))
     low_flow = (
         _LOW_FLOW_DEVICES[int(rng.integers(len(_LOW_FLOW_DEVICES)))] if enrich else "Nasal Cannula"
     )
@@ -158,7 +170,7 @@ def sample_respiratory_support(
     imv_run = 0
     timeline: list[tuple[str, int]] = []
     for level, resp in zip(spine.support_level, spine.resp_flag, strict=True):
-        device = _device_for(level, resp)
+        device = _device_for(level, resp, l2_noninvasive=l2_noninvasive)
         if enrich and device == "Nasal Cannula":
             device = low_flow
         elif enrich and device == "High Flow NC":
