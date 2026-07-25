@@ -124,6 +124,26 @@ def test_repair_vitals_sets_robust_sigma_and_clamps_mean() -> None:
     assert tables["vitals"]["params"]["spo2_ar1_by_state"]["1"]["mean"] <= 100.0
 
 
+def test_repair_vitals_leaves_physiologic_refit_sigma_untouched() -> None:
+    # A pack from the robust re-fit carries physiologic, heteroscedastic per-state
+    # sigma; repair must be a no-op so that state-dependent variance is preserved (KTD2).
+    tables = {
+        "vitals": {
+            "params": {
+                "map_ar1_by_state": {
+                    "2": {"mean": 80.6, "phi": 0.66, "sigma": 11.18},
+                    "5": {"mean": 73.4, "phi": 0.66, "sigma": 8.85},
+                }
+            }
+        }
+    }
+    repair_vitals_dispersion(tables)
+    mp = tables["vitals"]["params"]["map_ar1_by_state"]
+    assert (
+        mp["2"]["sigma"] == 11.18 and mp["5"]["sigma"] == 8.85
+    )  # unchanged, still heteroscedastic
+
+
 # --- terminal deterioration ------------------------------------------------ #
 
 

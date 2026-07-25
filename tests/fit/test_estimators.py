@@ -169,6 +169,73 @@ def test_ar1_phi_is_stationary() -> None:
     assert np.isfinite(fit["mean"])
 
 
+def _ar1_pairs(phi: float, sigma: float, mean: float, n: int, seed: int) -> tuple:
+    """Lag-1 (prev, curr) arrays from a simulated AR(1) series with known params."""
+    rng = np.random.default_rng(seed)
+    xs = [mean]
+    for _ in range(n):
+        xs.append(mean + phi * (xs[-1] - mean) + rng.normal(0, sigma))
+    arr = np.array(xs)
+    return arr[:-1], arr[1:]
+
+
+def test_fit_ar1_recovers_phi_and_sigma_on_clean_series() -> None:
+    # Happy path: a clean autocorrelated series recovers its true phi and residual SD.
+    prev, curr = _ar1_pairs(phi=0.8, sigma=5.0, mean=90.0, n=8000, seed=1)
+    fit = estimators._fit_ar1(prev, curr)
+    assert abs(fit["phi"] - 0.8) < 0.05
+    assert abs(fit["sigma"] - 5.0) < 0.6
+    assert abs(fit["mean"] - 90.0) < 1.0
+
+
+def test_fit_ar1_is_robust_to_extreme_outliers() -> None:
+    # Regression for the sigma~4229 / phi~0 bug: a few charting artifacts must not
+    # blow up sigma or destroy the autocorrelation estimate.
+    prev, curr = _ar1_pairs(phi=0.8, sigma=5.0, mean=90.0, n=8000, seed=2)
+    prev[:20] = 1.0e5  # injected device/charting artifacts
+    curr[:20] = 1.0e5
+    fit = estimators._fit_ar1(prev, curr)
+    assert fit["sigma"] < 20.0  # physiologic band, not thousands
+    assert fit["phi"] > 0.5  # autocorrelation survives the outliers
+
+
+def test_fit_ar1_falls_back_when_all_pairs_trimmed() -> None:
+    # Degenerate input (too few usable pairs after trimming) must not raise.
+    prev = np.array([1.0, 1.0])
+    curr = np.array([1.0e9, 1.0])
+    fit = estimators._fit_ar1(prev, curr)
+    assert np.isfinite(fit["phi"]) and np.isfinite(fit["sigma"])
+
+
+def test_fit_ar1_by_state_dispersion_is_heteroscedastic() -> None:
+    # Per-state sigma reflects each state's own variance, not one pooled value.
+    rng = np.random.default_rng(3)
+    v_rows, s_rows = [], []
+    for h in range(120):
+        hid = f"H{h}"
+        for state, sd in ((2, 3.0), (4, 12.0)):  # calm vs volatile state
+            x = 90.0
+            for interval in range(8):
+                base = interval + state * 10  # disjoint interval ranges per state
+                x = 90.0 + 0.6 * (x - 90.0) + rng.normal(0, sd)
+                v_rows.append(
+                    {
+                        "hospitalization_id": hid,
+                        "interval_idx": base,
+                        "vital_category": "map",
+                        "value": x,
+                    }
+                )
+                s_rows.append(
+                    {"hospitalization_id": hid, "interval_idx": base, "support_level": state}
+                )
+    params, _ = estimators.fit_ar1_by_state(
+        pl.DataFrame(v_rows), pl.DataFrame(s_rows), vitals=["map"]
+    )
+    by_state = params["map_ar1_by_state"]
+    assert by_state["4"]["sigma"] > 2.0 * by_state["2"]["sigma"]  # volatile >> calm
+
+
 # --------------------------------------------------------------------------- #
 # Lab copula
 # --------------------------------------------------------------------------- #

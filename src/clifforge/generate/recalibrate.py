@@ -58,6 +58,11 @@ _HIGH_LEVELS: tuple[str, ...] = ("3", "4", "5")
 #: values to the outlier-clamp bounds; these aggregate real dispersions replace it.
 #: (The estimator fix in ``fit._fit_ar1`` prevents this in future fits; this repairs
 #: packs already fitted with the un-robust estimator.)
+#: A fitted per-state σ above this multiple of the robust real dispersion is treated
+#: as a corrupted (pre-robust-estimator) value and replaced; physiologic re-fit σ
+#: sits at ~1× and is left untouched, preserving its heteroscedasticity.
+_CORRUPT_SIGMA_FACTOR: float = 3.0
+
 _ROBUST_VITAL_SD: dict[str, float] = {
     "heart_rate": 17.79,
     "sbp": 22.24,
@@ -135,14 +140,16 @@ def _scale_sojourns(sojourn: dict[str, dict[str, Any]], multipliers: dict[str, f
 
 
 def repair_vitals_dispersion(tables: dict[str, Any]) -> None:
-    """Replace corrupted AR(1) ``sigma`` and clamp state means into physiologic range.
+    """Repair *corrupted* AR(1) ``sigma`` and clamp state means into physiologic range.
 
-    Operates in place on a pack's ``tables`` dict. For each fitted vital the
-    per-state ``sigma`` is set to the robust real dispersion (:data:`_ROBUST_VITAL_SD`)
-    and each state ``mean`` is clamped into the vital's outlier bounds (the fit can
-    emit impossible means such as an SpO2 of 108). State means are otherwise
-    preserved, so their acuity gradient — the physiologic signal terminal
-    deterioration rides on — is kept intact.
+    A legacy pack fitted with the pre-robust estimator can carry an implausible
+    ``sigma`` (e.g. a MAP σ of ~4000 mmHg) that pins the generated walk to the
+    outlier bounds. This replaces **only** such corrupted values — a per-state σ
+    above ``_CORRUPT_SIGMA_FACTOR`` × the robust real dispersion — with that robust
+    value, and clamps impossible means (e.g. an SpO2 of 108) into bounds. A pack
+    from the robust re-fit already carries physiologic, *heteroscedastic* per-state
+    σ, so this is a no-op on it and its state-dependent variance is preserved
+    (KTD2). Operates in place on a pack's ``tables`` dict.
     """
     block = tables.get("vitals")
     if not isinstance(block, dict) or "params" not in block:
@@ -154,7 +161,8 @@ def repair_vitals_dispersion(tables: dict[str, Any]) -> None:
             continue
         lower, upper = bounds("vitals", vital)
         for cell in by_state.values():
-            cell["sigma"] = robust_sd
+            if float(cell["sigma"]) > _CORRUPT_SIGMA_FACTOR * robust_sd:
+                cell["sigma"] = robust_sd  # corrupted fit — replace
             cell["mean"] = min(max(float(cell["mean"]), lower), upper)
 
 
