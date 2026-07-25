@@ -33,10 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
         "generate", help="Generate a synthetic CLIF 2.1 dataset (offline, no real data)."
     )
     generate.add_argument(
-        "--n-patients", type=int, required=True, help="Number of synthetic patients."
+        "--n-patients",
+        type=int,
+        default=None,
+        help="Number of synthetic patients (overrides a spec's n).",
     )
     generate.add_argument(
-        "--seed", type=int, default=42, help="Seed for byte-identical reproducible output."
+        "--seed", type=int, default=None, help="Seed for byte-identical reproducible output."
     )
     generate.add_argument(
         "--out", required=True, help="Output directory for the generated dataset."
@@ -52,6 +55,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use the built-in synthetic demo pack (no real data or fit required). "
         "Structurally valid CLIF 2.1 output for testing; not statistically calibrated.",
     )
+    generate.add_argument(
+        "--spec", default=None, help="A variant spec (TOML) describing a derivative to generate."
+    )
+    generate.add_argument(
+        "--preset", default=None, help="A shipped preset variant name (see clifforge.variants)."
+    )
+    generate.add_argument(
+        "--base-pack",
+        default="base_pack",
+        help="Base pack a --spec/--preset derives from (default: the shipped shareable base pack).",
+    )
 
     fit = sub.add_parser(
         "fit", help="Fit a parameter pack over real CLIF-MIMIC (one-time, requires real data)."
@@ -66,23 +80,46 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _run_generate(args: argparse.Namespace) -> int:
     """Generate + gate + write a synthetic dataset; nonzero on any failure (R25)."""
+    import dataclasses
+
     from clifforge.conformance.gate import ConformanceError
     from clifforge.demo import demo_pack
     from clifforge.fit.param_pack import ParamPack
     from clifforge.generate.orchestrator import generate_dataset, write_dataset
+    from clifforge.manifest import write_manifest
+    from clifforge.variants import load_preset, load_spec, spec_to_pack
 
-    if not args.demo and args.pack is None:
+    use_spec = args.spec is not None or args.preset is not None
+    if not use_spec and not args.demo and args.pack is None:
         print(
-            "clif-forge generate: provide --pack <dir> (a fitted pack) or --demo "
-            "(built-in synthetic pack, no real data required).",
+            "clif-forge generate: provide --spec/--preset (a variant recipe), --pack <dir> "
+            "(a fitted pack), or --demo (built-in synthetic pack, no real data required).",
             file=sys.stderr,
         )
         return 1
 
+    spec = None
     try:
-        pack = demo_pack() if args.demo else ParamPack.load(args.pack)
-        dataset = generate_dataset(pack, n_patients=args.n_patients, seed=args.seed)
+        if use_spec:
+            spec = load_spec(args.spec) if args.spec is not None else load_preset(args.preset)
+            base = ParamPack.load(args.base_pack)
+            pack = spec_to_pack(spec, base)  # no real_dir -> demographic-override path
+            n_patients = args.n_patients if args.n_patients is not None else spec.n
+            seed = args.seed if args.seed is not None else spec.seed
+        else:
+            pack = demo_pack() if args.demo else ParamPack.load(args.pack)
+            if args.n_patients is None:
+                print(
+                    "clif-forge generate: --n-patients is required without --spec/--preset.",
+                    file=sys.stderr,
+                )
+                return 1
+            n_patients = args.n_patients
+            seed = args.seed if args.seed is not None else 42
+        dataset = generate_dataset(pack, n_patients=n_patients, seed=seed)
         written = write_dataset(dataset, args.out)
+        manifest_spec = dataclasses.asdict(spec) if spec is not None else "master"
+        write_manifest(args.out, spec=manifest_spec, seed=seed)
     except ConformanceError as exc:
         print(f"clif-forge generate: conformance failure -> {exc}", file=sys.stderr)
         return 1

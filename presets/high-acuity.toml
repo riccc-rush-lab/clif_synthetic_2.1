@@ -1,0 +1,7 @@
+# A sicker cohort: more invasive ventilation, more vasopressors, higher mortality.
+name = "high-acuity"
+
+[rates]
+imv = 0.55
+mortality_scale = 1.4
+vaso_frac = 0.45

@@ -1,0 +1,7 @@
+# Sepsis-leaning: heavy vasopressor use, more CRRT, elevated mortality.
+name = "sepsis-heavy"
+
+[rates]
+vaso_frac = 0.50
+crrt_prob = 0.06
+mortality_scale = 1.3

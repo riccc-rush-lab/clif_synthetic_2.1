@@ -61,39 +61,55 @@ tables) so you can inspect real output without running anything or holding any
 credential. It ships with a generated
 [`REPORT.md`](demo_output/REPORT.md) and [`PROVENANCE.md`](demo_output/PROVENANCE.md).
 
-## Deriving your own dataset
+## Ideate your own CLIF-like dataset
 
-The shipped network-median dataset is the **off-the-shelf base**. From a fitted
-pack you can spin a **derivative** on three axes — **size**, **demographics**, and
-**illness rates** — with `scripts/generate_deliverable.py` (flags shown with their
-base defaults):
+The shipped network-median dataset is the **master** — an off-the-shelf base
+everyone builds on. Anyone can *ideate and create* their own **derivative** —
+always distinct, always CLIF 2.1-conformant — from the committed **shareable base
+pack** ([`base_pack/`](base_pack/), aggregate-only, no real data, no credential),
+on three axes: **size**, **demographics**, and **illness rates**.
+
+**Presets** — start from a shipped example variant, tweak, generate:
 
 ```bash
-uv run python scripts/generate_deliverable.py \
-    --base-pack <fitted-pack> --real-dir <real-clif-dir> --out ./my-dataset \
-    --n 20000 \                 # size
-    --age-shift 2.5 --hispanic-frac 0.45 \        # demographics
-    --imv-rate 0.55 --mortality-scale 1.4 \       # illness rates
-    --vaso-frac 0.45 --crrt-prob 0.29 --prone-severe 0.03
+uv run clif-forge generate --preset high-acuity --n-patients 5000 --out ./my-dataset
 ```
 
-With no flags it reproduces the base dataset. The same knobs are available on the
-Python API for finer control:
+Shipped presets: `high-acuity`, `older-cohort`, `sepsis-heavy` (see [`presets/`](presets/)).
 
-```python
-from clifforge.generate.populations import derive_chicago_population
-from clifforge.generate.recalibrate import recalibrate_to_network_median
+**Your own spec** — a variant is a small TOML recipe (every field defaults to the
+master; a minimal spec reproduces it):
 
-pack = recalibrate_to_network_median(
-    derive_chicago_population(base_pack, real_dir, race_target=..., ethnicity_target=..., age_shift_years=3.0),
-    peak_imv_target=0.55, mortality_scale=1.4,
-    flag_target_prevalence={"resp_flag": 0.5, "cv_flag": 0.45, "renal_flag": 0.05, "neuro_flag": 0.2},
-    crrt_prob=0.29, peak_target=...,  # or a fully custom peak-acuity distribution
-)
+```toml
+# my-variant.toml
+name = "my-icu"
+n = 20000
+
+[demographics]
+age_shift = 5.0        # relative to the base pack
+hispanic_frac = 0.45
+
+[rates]
+imv = 0.55             # reaches-invasive-ventilation target
+mortality_scale = 1.4  # multiplier on peak mortality
+vaso_frac = 0.45       # cardiovascular-failure (vasopressor) rate
+crrt_prob = 0.29
+prone_severe = 0.03
 ```
 
-`recalibrate_to_network_median` and `derive_chicago_population` operate on a deep
-copy and never mutate the input pack, so one base pack can seed many derivatives.
+```bash
+uv run clif-forge generate --spec my-variant.toml --out ./my-dataset
+```
+
+Every generated dataset writes a `manifest.json` recording the resolved spec, seed,
+generator version, and per-table content hashes — so a variant is reproducible from
+its recipe, and any two variants are provably distinct. The same knobs are available
+on the Python API (`clifforge.variants.spec_to_pack`,
+`clifforge.generate.recalibrate.recalibrate_to_network_median`), which operate on a
+deep copy and never mutate the base pack, so one base pack seeds unlimited variants.
+
+To re-author the base pack itself (or fit your own site's data), see
+`scripts/build_base_pack.py` and the `fit` subcommand.
 
 ## Evaluation
 

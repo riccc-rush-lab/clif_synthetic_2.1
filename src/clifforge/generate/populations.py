@@ -19,7 +19,12 @@ import polars as pl
 from clifforge.fit.param_pack import ParamPack
 from clifforge.reference import categories
 
-__all__ = ["CHICAGO_ETHNICITY_TARGET", "CHICAGO_RACE_TARGET", "derive_chicago_population"]
+__all__ = [
+    "CHICAGO_ETHNICITY_TARGET",
+    "CHICAGO_RACE_TARGET",
+    "apply_population_overrides",
+    "derive_chicago_population",
+]
 
 #: Chicago-representative race distribution (deliberate re-weighting away from the
 #: source center's demographics), using exact mCIDE ``race_category`` members.
@@ -126,4 +131,34 @@ def derive_chicago_population(
     med_block["params"]["med_category_marginal"] = _proportions(med_counts)
     med_block["params"]["mar_action_category_marginal"] = _proportions(action_counts)
 
+    return ParamPack(manifest=dict(base_pack.manifest), tables=tables)
+
+
+def apply_population_overrides(
+    base_pack: ParamPack,
+    *,
+    age_shift_years: float = 0.0,
+    race_target: dict[str, float] | None = None,
+    ethnicity_target: dict[str, float] | None = None,
+) -> ParamPack:
+    """Re-weight an **already-complete** pack's demographics without real data.
+
+    Unlike :func:`derive_chicago_population` (which reads the real dataset to fit
+    age quantiles and the med marginal), this operates purely on the pack: it
+    overrides the race/ethnicity marginals with the given targets and shifts the
+    pack's existing ``age_at_admission_quantiles`` by ``age_shift_years``. This is
+    the no-credential path — a shareable base pack already carries the age/med/
+    demographic blocks, so a derivative only needs demographic overrides. Missing
+    blocks (e.g. no age quantiles) are left untouched. The input is not mutated.
+    """
+    tables = copy.deepcopy(dict(base_pack.tables))
+    patient = tables.setdefault("patient", {"params": {}})
+    if race_target is not None:
+        patient["params"]["race_category_marginal"] = dict(race_target)
+    if ethnicity_target is not None:
+        patient["params"]["ethnicity_category_marginal"] = dict(ethnicity_target)
+    hosp_params = tables.get("hospitalization", {}).get("params", {})
+    quantiles = hosp_params.get("age_at_admission_quantiles")
+    if age_shift_years and isinstance(quantiles, list):
+        hosp_params["age_at_admission_quantiles"] = [q + age_shift_years for q in quantiles]
     return ParamPack(manifest=dict(base_pack.manifest), tables=tables)

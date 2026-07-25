@@ -1,0 +1,38 @@
+{
+  "fitted": true,
+  "n_records": 437565,
+  "params": {
+    "admission_type_category_marginal": {
+      "direct": 0.05767828779724155,
+      "ed": 0.8396786763109481,
+      "elective": 0.10264303589181036
+    },
+    "age_at_admission_quantiles": [
+      20.5,
+      33.5,
+      42.5,
+      51.5,
+      58.5,
+      63.5,
+      68.5,
+      73.5,
+      79.5,
+      86.5,
+      108.5
+    ],
+    "discharge_category_marginal": {
+      "Acute Care Hospital": 0.004342212014215031,
+      "Acute Inpatient Rehab Facility": 0.025422508655856844,
+      "Against Medical Advice (AMA)": 0.006346485664986916,
+      "Assisted Living": 0.001112977500485642,
+      "Expired": 0.021413961354313074,
+      "Home": 0.5376161256041959,
+      "Hospice": 0.009817969901614617,
+      "Long Term Care Hospital (LTACH)": 0.014950921577365649,
+      "Missing": 0.2741946910744689,
+      "Other": 0.0029801286665981056,
+      "Psychiatric Hospital": 0.005379772148137991,
+      "Skilled Nursing Facility (SNF)": 0.09642224583776125
+    }
+  }
+}

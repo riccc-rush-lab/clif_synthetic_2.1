@@ -1,0 +1,5 @@
+# An older population: age distribution shifted up 10 years vs the base pack.
+name = "older-cohort"
+
+[demographics]
+age_shift = 10.0

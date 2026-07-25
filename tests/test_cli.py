@@ -315,3 +315,46 @@ def test_cli_generate_clean_exit_when_out_is_a_file(pack: ParamPack, tmp_path) -
     out_file.write_text("i am not a directory")
     code = main(["generate", "--n-patients", "3", "--out", str(out_file), "--pack", str(pack_dir)])
     assert code == 1
+
+
+def test_generate_from_spec_writes_dataset_and_manifest(tmp_path, pack: ParamPack) -> None:
+    # A variant spec generates against a base pack (here the demo pack on disk) and
+    # writes a manifest — the no-credential derivative path.
+    base_dir = tmp_path / "base"
+    pack.write(base_dir)
+    spec = tmp_path / "v.toml"
+    spec.write_text('name = "cli-variant"\n[rates]\ncrrt_prob = 0.4\n', encoding="utf-8")
+    out = tmp_path / "out"
+    rc = main(
+        [
+            "generate",
+            "--spec",
+            str(spec),
+            "--base-pack",
+            str(base_dir),
+            "--n-patients",
+            "6",
+            "--seed",
+            "3",
+            "--out",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert (out / "clif_hospitalization.parquet").exists()
+    assert (out / "manifest.json").exists()
+
+
+def test_generate_bad_spec_path_exits_nonzero(tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = main(
+        [
+            "generate",
+            "--spec",
+            str(tmp_path / "missing.toml"),
+            "--n-patients",
+            "5",
+            "--out",
+            str(tmp_path / "x"),
+        ]
+    )
+    assert rc == 1
