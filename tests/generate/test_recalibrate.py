@@ -16,7 +16,13 @@ from clifforge.generate.recalibrate import (
     recalibrate_to_network_median,
     repair_vitals_dispersion,
 )
-from clifforge.generate.spine import FLAG_NAMES, SpineFrame, sample_spine
+from clifforge.generate.spine import (
+    FLAG_NAMES,
+    SpineFrame,
+    _apply_terminal_deterioration,
+    _pick_terminal_archetype,
+    sample_spine,
+)
 from clifforge.generate.tables.labs import _panel_intervals
 from clifforge.generate.tables.medication_admin_continuous import (
     _VASOPRESSORS,
@@ -144,26 +150,72 @@ def test_repair_vitals_leaves_physiologic_refit_sigma_untouched() -> None:
     )  # unchanged, still heteroscedastic
 
 
-# --- terminal deterioration ------------------------------------------------ #
+# --- terminal deterioration (heterogeneous archetypes) --------------------- #
 
 
-def test_terminal_deterioration_escalates_dying_tail() -> None:
-    # expired_rate 1.0 -> always expires; terminal window escalates the tail.
+def _blank_flags(n: int) -> dict[str, list[bool]]:
+    return {name: [False] * n for name in FLAG_NAMES}
+
+
+def test_comfort_archetype_withdraws_support() -> None:
+    # Withdrawal: acuity is de-escalated near death while organ failure persists.
+    lvl = [4] * 30
+    flags = _blank_flags(30)
+    _apply_terminal_deterioration(
+        lvl, flags, 24.0, 1.0, np.random.default_rng(0), mix={"comfort": 1.0}
+    )
+    assert lvl[-1] < 4  # support withdrawn (acuity falls)
+    assert flags["renal_flag"][-1]  # rising renal markers persist
+
+
+def test_abrupt_archetype_is_a_short_steep_collapse() -> None:
+    lvl = [2] * 30
+    flags = _blank_flags(30)
+    _apply_terminal_deterioration(
+        lvl, flags, 24.0, 1.0, np.random.default_rng(0), mix={"abrupt": 1.0}
+    )
+    changed = [i for i, v in enumerate(lvl) if v > 2]
+    assert changed and min(changed) > 30 - 24  # only a short tail (window // 3) escalated
+    assert max(lvl) >= 5  # to the acuity ceiling
+
+
+def test_prolonged_archetype_ladders_the_organs() -> None:
+    lvl = [2] * 30
+    flags = _blank_flags(30)
+    _apply_terminal_deterioration(
+        lvl, flags, 24.0, 1.0, np.random.default_rng(0), mix={"prolonged": 1.0}
+    )
+    assert flags["resp_flag"][-1] and flags["cv_flag"][-1] and flags["renal_flag"][-1]
+    assert max(lvl) >= 5
+
+
+def test_terminal_archetypes_vary_across_stays() -> None:
+    seen = {
+        _pick_terminal_archetype(
+            {"abrupt": 0.3, "prolonged": 0.5, "comfort": 0.2}, np.random.default_rng(s)
+        )
+        for s in range(200)
+    }
+    assert len(seen) >= 2  # dying courses are not a single stereotyped shape
+
+
+def test_aggregate_escalation_dominates_but_not_uniform() -> None:
+    # ~80% (abrupt + prolonged) escalate terminally; ~20% (comfort) do not — so the
+    # aggregate decedent decline is preserved while individual courses vary.
     pack = recalibrate_to_network_median(_pack(expired_rate=1.0), terminal_deterioration_hours=24.0)
-    sp = sample_spine(pack, np.random.default_rng(0), hospitalization_id="Hd")
-    assert sp.outcome == "expired"
-    n_term = 24  # grid_step 1.0h
-    tail = sp.support_level[-min(n_term, sp.n_intervals) :]
-    assert max(tail) >= 4  # escalated into invasive-ventilation acuity
-    assert sp.cv_flag[-1] and sp.resp_flag[-1]  # organ failure active at death
+    n, high = 200, 0
+    for s in range(n):
+        sp = sample_spine(pack, np.random.default_rng(s), hospitalization_id=f"H{s}")
+        if max(sp.support_level[-24:]) >= 4:
+            high += 1
+    assert 0.6 < high / n < 0.95
 
 
-def test_survivors_are_not_deteriorated() -> None:
-    pack = recalibrate_to_network_median(_pack(expired_rate=0.0), terminal_deterioration_hours=24.0)
-    sp = sample_spine(pack, np.random.default_rng(1), hospitalization_id="Ha")
-    assert sp.outcome == "alive"
-    # No forced terminal escalation: the alive tail need not reach L4+.
-    # (This is probabilistic-free — deterioration only runs for expired stays.)
+def test_terminal_deterioration_is_deterministic() -> None:
+    pack = recalibrate_to_network_median(_pack(expired_rate=1.0), terminal_deterioration_hours=24.0)
+    a = sample_spine(pack, np.random.default_rng(3), hospitalization_id="Hd")
+    b = sample_spine(pack, np.random.default_rng(3), hospitalization_id="Hd")
+    assert a.support_level == b.support_level and a.cv_flag == b.cv_flag
 
 
 # --- gated generator paths ------------------------------------------------- #

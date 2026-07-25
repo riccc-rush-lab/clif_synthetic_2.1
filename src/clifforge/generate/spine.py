@@ -245,7 +245,14 @@ def sample_spine(
 
     term_hours = params.get("terminal_deterioration_hours")
     if outcome == "expired" and term_hours:
-        _apply_terminal_deterioration(support_level, flags, float(term_hours), grid_step_hours, rng)
+        _apply_terminal_deterioration(
+            support_level,
+            flags,
+            float(term_hours),
+            grid_step_hours,
+            rng,
+            mix=params.get("terminal_archetype_mix"),
+        )
 
     return SpineFrame(
         hospitalization_id=hospitalization_id,
@@ -258,39 +265,81 @@ def sample_spine(
     )
 
 
+#: Terminal-decline archetypes and their default mix. Real ICU deaths are not a
+#: single stereotyped course, so an expiring stay draws one of these shapes.
+TERMINAL_ARCHETYPES: tuple[str, ...] = ("abrupt", "prolonged", "comfort")
+_DEFAULT_TERMINAL_ARCHETYPE_MIX: dict[str, float] = {
+    "abrupt": 0.3,
+    "prolonged": 0.5,
+    "comfort": 0.2,
+}
+
+
+def _pick_terminal_archetype(mix: dict[str, float], rng: np.random.Generator) -> str:
+    """Draw one terminal archetype from the mix (renormalized over known archetypes)."""
+    total = sum(mix.get(a, 0.0) for a in TERMINAL_ARCHETYPES) or 1.0
+    r = float(rng.random())
+    cum = 0.0
+    for archetype in TERMINAL_ARCHETYPES:
+        cum += mix.get(archetype, 0.0) / total
+        if r < cum:
+            return archetype
+    return TERMINAL_ARCHETYPES[-1]
+
+
 def _apply_terminal_deterioration(
     support_level: list[int],
     flags: dict[str, list[bool]],
     hours: float,
     grid_step_hours: float,
     rng: np.random.Generator,
+    mix: dict[str, float] | None = None,
 ) -> None:
-    """Escalate the final window of an expiring trajectory into multi-organ failure.
+    """Shape the final window of an expiring trajectory into a terminal decline.
 
-    Real ICU deaths are preceded by physiologic deterioration — falling blood
-    pressure and oxygenation, rising renal markers, escalating support — that a
-    peak-coupled outcome alone does not produce (a patient can peak mid-stay and
-    then de-escalate, so the terminal intervals look benign). For an expiring
-    stay this ramps the last ``hours`` of acuity up toward the ceiling and turns
-    on the organ-failure flags, so the deterioration reaches every downstream
-    table through the spine's existing couplings (support-level state means drive
-    vitals down, the renal flag drives creatinine/BUN up) without any table
-    reading another (KTD-6). Acuity is only ever raised, never lowered.
+    A peak-coupled outcome alone leaves the terminal intervals benign (a patient
+    can peak mid-stay then de-escalate), so decedents look like survivors. This
+    imprints one of several **archetypes** on the last ``hours`` of the stay, so
+    dying courses vary across encounters while the deterioration still reaches
+    every table through the spine's existing couplings (support-level state means
+    drive vitals; the renal flag drives creatinine/BUN), never by reading another
+    table (KTD-6):
+
+    * ``abrupt`` — a short, steep collapse to the acuity ceiling with all organs
+      failing (sudden arrest).
+    * ``prolonged`` — a laddered climb L3 -> L5 with organs failing in sequence
+      (respiratory, then cardiovascular, then renal).
+    * ``comfort`` — withdrawal: support is **de-escalated** toward comfort while
+      organ failure persists (rising renal markers), so acuity falls near death.
+
+    ``abrupt``/``prolonged`` only raise acuity; ``comfort`` may lower it.
     """
     n = len(support_level)
     if n == 0:
         return
-    n_term = max(1, round(hours / grid_step_hours))
+    archetype = _pick_terminal_archetype(mix or _DEFAULT_TERMINAL_ARCHETYPE_MIX, rng)
+    full_window = max(1, round(hours / grid_step_hours))
+    n_term = max(1, full_window // 3) if archetype == "abrupt" else full_window
     start = max(0, n - n_term)
     span = n - start
     for i in range(start, n):
         frac = (i - start + 1) / span  # 0..1 across the terminal window
-        target = 3 + int(round(2.0 * frac))  # ramp L3 -> L5 toward death
-        support_level[i] = max(support_level[i], target)
-        flags["resp_flag"][i] = True
-        flags["cv_flag"][i] = True
-        if frac >= 0.5:  # renal failure joins later in the cascade
+        if archetype == "comfort":
+            support_level[i] = max(2, 4 - int(round(2.0 * frac)))  # withdraw toward comfort
+            flags["resp_flag"][i] = True
             flags["renal_flag"][i] = True
+        elif archetype == "abrupt":
+            support_level[i] = max(support_level[i], 4 + int(round(frac)))  # steep to ceiling
+            flags["resp_flag"][i] = True
+            flags["cv_flag"][i] = True
+            flags["renal_flag"][i] = True
+        else:  # prolonged — laddered multi-organ failure
+            support_level[i] = max(support_level[i], 3 + int(round(2.0 * frac)))
+            flags["resp_flag"][i] = True
+            if frac >= 0.34:
+                flags["cv_flag"][i] = True
+            if frac >= 0.67:
+                flags["renal_flag"][i] = True
 
 
 def _sample_outcome(params: dict[str, Any], peak_level: int, rng: np.random.Generator) -> str:
