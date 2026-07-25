@@ -81,6 +81,11 @@ _GRID_DTTM = {
     "medication_admin_continuous": "admin_dttm",
 }
 
+#: Support level at or above which a hospitalization counts as ICU-exposed, used to
+#: condition lab-presence fitting on the ICU population (mirrors the generator's
+#: ``generate._common.ICU_MIN_SUPPORT_LEVEL``; kept local to preserve fit→generate layering).
+_ICU_MIN_SUPPORT_LEVEL = 2
+
 
 # --------------------------------------------------------------------------- #
 # Real-data discovery (KTD-1: confined to this module)
@@ -376,7 +381,19 @@ def run_fit(
             config=config,
         )
         n_hosp = len(train_hosp_set)
-        lab_params, lab_rec = estimators.fit_lab_copula(labs_grid, n_hospitalizations=n_hosp)
+        # ICU-exposed cohort: any interval at or above the ICU support threshold.
+        # Conditioning lab presence on this population matches the ICU-focused
+        # generator (mirrors generate ICU_MIN_SUPPORT_LEVEL = 2).
+        icu_hosp = set(
+            timeline.filter(pl.col("support_level") >= _ICU_MIN_SUPPORT_LEVEL)
+            .select("hospitalization_id")
+            .unique()
+            .to_series()
+            .to_list()
+        )
+        lab_params, lab_rec = estimators.fit_lab_copula(
+            labs_grid, n_hospitalizations=n_hosp, icu_hospitalizations=icu_hosp
+        )
         all_records.extend(lab_rec)
         table_blocks["labs"] = {
             "n_records": labs_grid.height,

@@ -275,6 +275,46 @@ def test_lab_copula_symmetric_positive_definite() -> None:
     assert np.allclose(np.diag(corr), 1.0)  # unit diagonal
 
 
+def _icu_split_lab_frame() -> pl.DataFrame:
+    # 10 ICU stays each measure creatinine every interval; 10 non-ICU stays never do.
+    # So creatinine is present in 10/20 overall but 10/10 of the ICU cohort.
+    rows = []
+    for h in range(20):
+        icu = h < 10
+        for interval in range(5):
+            if icu:
+                rows.append(
+                    {
+                        "hospitalization_id": f"H{h}",
+                        "interval_idx": interval,
+                        "lab_category": "creatinine",
+                        "value": 1.2,
+                    }
+                )
+            rows.append(
+                {
+                    "hospitalization_id": f"H{h}",
+                    "interval_idx": interval,
+                    "lab_category": "sodium",
+                    "value": 140.0,
+                }
+            )
+    return pl.DataFrame(rows)
+
+
+def test_lab_presence_conditioned_on_icu_cohort() -> None:
+    labs = _icu_split_lab_frame()
+    icu = {f"H{h}" for h in range(10)}
+    # Full-cohort presence dilutes creatinine to ~0.5; ICU-conditioned lifts it to 1.0.
+    full, _ = estimators.fit_lab_copula(labs, n_hospitalizations=20)
+    cond, _ = estimators.fit_lab_copula(labs, n_hospitalizations=20, icu_hospitalizations=icu)
+    assert abs(full["lab_presence"]["creatinine"] - 0.5) < 1e-6
+    assert abs(cond["lab_presence"]["creatinine"] - 1.0) < 1e-6
+    # Marginals and correlation are unchanged by the presence conditioning.
+    assert full["lab_marginals"] == cond["lab_marginals"]
+    assert full["lab_correlation"] == cond["lab_correlation"]
+
+
 def test_nearest_pd_repairs_indefinite_matrix() -> None:
     indefinite = np.array([[1.0, 0.9, -0.9], [0.9, 1.0, 0.9], [-0.9, 0.9, 1.0]])
     repaired = estimators.nearest_positive_definite_correlation(indefinite)

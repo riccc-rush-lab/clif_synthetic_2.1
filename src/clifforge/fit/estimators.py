@@ -542,6 +542,7 @@ def fit_lab_copula(
     *,
     n_hospitalizations: int,
     min_n: int = 20,
+    icu_hospitalizations: set[str] | None = None,
 ) -> EstimatorResult:
     """Co-measurement Spearman correlation + per-lab log-marginals + presence.
 
@@ -552,6 +553,13 @@ def fit_lab_copula(
     ``log1p`` values (labs are heavy-tailed and non-negative). Each lab is gated
     at ``min_n`` observations; presence rate is the fraction of hospitalizations
     with at least one measurement.
+
+    ``presence`` is conditioned on the **ICU-exposed** cohort when
+    ``icu_hospitalizations`` is supplied — the population the generator targets.
+    Computing it over all hospitalizations (many of them non-ICU floor stays with
+    few labs) otherwise undershoots ICU presence several-fold (e.g. creatinine
+    0.73 vs a real-ICU ~0.99). Marginals and correlation are left over the full
+    gridded input; only presence is re-based.
     """
     labs = labs_gridded.drop_nulls("value")
     per_lab_counts = labs.group_by("lab_category").len().rename({"len": "n"})
@@ -570,16 +578,21 @@ def fit_lab_copula(
     survived_marginals, audit = suppress(counts, marginals, min_n=min_n)
     lab_order = sorted(survived_marginals)
 
+    if icu_hospitalizations is not None:
+        presence_labs = labs.filter(pl.col("hospitalization_id").is_in(list(icu_hospitalizations)))
+        presence_denom = len(icu_hospitalizations)
+    else:
+        presence_labs = labs
+        presence_denom = n_hospitalizations
+
     presence = {}
     for lab in lab_order:
         n_hosp_with = (
-            labs.filter(pl.col("lab_category") == lab)
+            presence_labs.filter(pl.col("lab_category") == lab)
             .select(pl.col("hospitalization_id").n_unique())
             .item()
         )
-        presence[lab] = (
-            round(n_hosp_with / n_hospitalizations, 6) if n_hospitalizations > 0 else 0.0
-        )
+        presence[lab] = round(n_hosp_with / presence_denom, 6) if presence_denom > 0 else 0.0
 
     correlation = _co_measurement_correlation(labs, lab_order)
 
