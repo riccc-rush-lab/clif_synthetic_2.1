@@ -1,0 +1,279 @@
+{
+  "fitted": true,
+  "n_records": 3654576,
+  "params": {
+    "infusion_hazards": {
+      "acetaminophen": {
+        "mean_run_intervals": 1.2392,
+        "stop_hazard": 0.806969
+      },
+      "albumin_infusion": {
+        "mean_run_intervals": 1.9997,
+        "stop_hazard": 0.500074
+      },
+      "alteplase": {
+        "mean_run_intervals": 1.0741,
+        "stop_hazard": 0.930994
+      },
+      "aminocaproic": {
+        "mean_run_intervals": 1.1299,
+        "stop_hazard": 0.885057
+      },
+      "aminophylline": {
+        "mean_run_intervals": 1.0455,
+        "stop_hazard": 0.956522
+      },
+      "amiodarone": {
+        "mean_run_intervals": 1.0518,
+        "stop_hazard": 0.950714
+      },
+      "angiotensin": {
+        "mean_run_intervals": 1.6232,
+        "stop_hazard": 0.616071
+      },
+      "argatroban": {
+        "mean_run_intervals": 1.112,
+        "stop_hazard": 0.89924
+      },
+      "bivalirudin": {
+        "mean_run_intervals": 1.1222,
+        "stop_hazard": 0.891141
+      },
+      "bumetanide": {
+        "mean_run_intervals": 1.1192,
+        "stop_hazard": 0.893532
+      },
+      "cisatracurium": {
+        "mean_run_intervals": 1.2021,
+        "stop_hazard": 0.831858
+      },
+      "clevidipine": {
+        "mean_run_intervals": 2.062,
+        "stop_hazard": 0.484964
+      },
+      "dexmedetomidine": {
+        "mean_run_intervals": 1.5118,
+        "stop_hazard": 0.661474
+      },
+      "dextrose": {
+        "mean_run_intervals": 1.5721,
+        "stop_hazard": 0.636109
+      },
+      "dextrose_in_water_d5w": {
+        "mean_run_intervals": 1.5753,
+        "stop_hazard": 0.634781
+      },
+      "diltiazem": {
+        "mean_run_intervals": 1.2976,
+        "stop_hazard": 0.770626
+      },
+      "dobutamine": {
+        "mean_run_intervals": 1.1696,
+        "stop_hazard": 0.854963
+      },
+      "dopamine": {
+        "mean_run_intervals": 1.548,
+        "stop_hazard": 0.645988
+      },
+      "epinephrine": {
+        "mean_run_intervals": 1.5246,
+        "stop_hazard": 0.655919
+      },
+      "epoprostenol": {
+        "mean_run_intervals": 1.189,
+        "stop_hazard": 0.84106
+      },
+      "eptifibatide": {
+        "mean_run_intervals": 1.0482,
+        "stop_hazard": 0.954031
+      },
+      "esmolol": {
+        "mean_run_intervals": 1.7819,
+        "stop_hazard": 0.561199
+      },
+      "fentanyl": {
+        "mean_run_intervals": 1.2234,
+        "stop_hazard": 0.817402
+      },
+      "furosemide": {
+        "mean_run_intervals": 1.1371,
+        "stop_hazard": 0.87945
+      },
+      "heparin": {
+        "mean_run_intervals": 1.1201,
+        "stop_hazard": 0.892799
+      },
+      "hydromorphone": {
+        "mean_run_intervals": 1.1598,
+        "stop_hazard": 0.862238
+      },
+      "insulin": {
+        "mean_run_intervals": 1.7398,
+        "stop_hazard": 0.574778
+      },
+      "ketamine": {
+        "mean_run_intervals": 1.2146,
+        "stop_hazard": 0.823324
+      },
+      "labetalol": {
+        "mean_run_intervals": 1.8121,
+        "stop_hazard": 0.551838
+      },
+      "lidocaine": {
+        "mean_run_intervals": 1.0938,
+        "stop_hazard": 0.914245
+      },
+      "lorazepam": {
+        "mean_run_intervals": 1.2701,
+        "stop_hazard": 0.787356
+      },
+      "magnesium": {
+        "mean_run_intervals": 1.1824,
+        "stop_hazard": 0.845714
+      },
+      "midazolam": {
+        "mean_run_intervals": 1.239,
+        "stop_hazard": 0.807103
+      },
+      "milrinone": {
+        "mean_run_intervals": 1.0747,
+        "stop_hazard": 0.930458
+      },
+      "morphine": {
+        "mean_run_intervals": 1.3223,
+        "stop_hazard": 0.756237
+      },
+      "naloxone": {
+        "mean_run_intervals": 1.2022,
+        "stop_hazard": 0.831839
+      },
+      "nicardipine": {
+        "mean_run_intervals": 1.7396,
+        "stop_hazard": 0.574828
+      },
+      "nitroglycerin": {
+        "mean_run_intervals": 1.947,
+        "stop_hazard": 0.513613
+      },
+      "nitroprusside": {
+        "mean_run_intervals": 1.8957,
+        "stop_hazard": 0.527496
+      },
+      "norepinephrine": {
+        "mean_run_intervals": 1.8391,
+        "stop_hazard": 0.54374
+      },
+      "octreotide": {
+        "mean_run_intervals": 1.0284,
+        "stop_hazard": 0.972415
+      },
+      "pantoprazole": {
+        "mean_run_intervals": 1.0342,
+        "stop_hazard": 0.966932
+      },
+      "pentobarbital": {
+        "mean_run_intervals": 1.2322,
+        "stop_hazard": 0.811573
+      },
+      "phenylephrine": {
+        "mean_run_intervals": 1.9407,
+        "stop_hazard": 0.515279
+      },
+      "procainamide": {
+        "mean_run_intervals": 1.1186,
+        "stop_hazard": 0.893939
+      },
+      "propofol": {
+        "mean_run_intervals": 1.4666,
+        "stop_hazard": 0.681834
+      },
+      "rocuronium": {
+        "mean_run_intervals": 1.1015,
+        "stop_hazard": 0.907875
+      },
+      "sodium bicarbonate": {
+        "mean_run_intervals": 1.1729,
+        "stop_hazard": 0.852585
+      },
+      "sodium chloride": {
+        "mean_run_intervals": 1.756,
+        "stop_hazard": 0.569484
+      },
+      "tpn": {
+        "mean_run_intervals": 1.0933,
+        "stop_hazard": 0.91467
+      },
+      "treprostinil": {
+        "mean_run_intervals": 1.0995,
+        "stop_hazard": 0.909524
+      },
+      "vasopressin": {
+        "mean_run_intervals": 1.1904,
+        "stop_hazard": 0.840074
+      },
+      "vecuronium": {
+        "mean_run_intervals": 1.2797,
+        "stop_hazard": 0.781457
+      }
+    },
+    "mar_action_category_marginal": {
+      "dose_change": 0.3893376862046183,
+      "going": 0.0015976920052739965,
+      "start": 0.30457580259369155,
+      "stop": 0.3044888191964162
+    },
+    "med_category_marginal": {
+      "albumin": 0.015309063420706088,
+      "aminocaproic_acid": 7.505883169993563e-05,
+      "aminophylline": 5.342265601418906e-06,
+      "amiodarone": 0.004313211689945589,
+      "angiotensin": 6.744610321791369e-05,
+      "argatroban": 0.0006773992782599172,
+      "bivalirudin": 0.00035339086953386063,
+      "bumetanide": 0.0008968328378381989,
+      "cisatracurium": 0.004202092565436076,
+      "clevidipine": 0.0013706917966840558,
+      "dexmedetomidine": 0.027808362248345903,
+      "dextrose_5_water": 0.1519837167744469,
+      "dextrose_other": 0.15439454768372718,
+      "diltiazem": 0.002488961543701068,
+      "dobutamine": 0.00226057968924041,
+      "dopamine": 0.0031823876187652422,
+      "epinephrine": 0.005787142769377065,
+      "epoprostenol": 0.0002481482371859082,
+      "eptifibatide": 0.00032587820168655324,
+      "esmolol": 0.0033172798252010696,
+      "fentanyl": 0.028584593440232068,
+      "furosemide": 0.009546628629735585,
+      "heparin": 0.019671691067464803,
+      "hydromorphone": 0.003336645538006213,
+      "insulin": 0.0261121929198954,
+      "ketamine": 0.0031576796403586798,
+      "labetalol": 0.0014429459389432465,
+      "lidocaine": 0.0002942252779981462,
+      "lorazepam": 4.647771073234448e-05,
+      "magnesium_sulfate": 3.65945193697195e-05,
+      "midazolam": 0.011784503690169965,
+      "milrinone": 0.0024468912020898944,
+      "morphine": 0.0014943652453569035,
+      "naloxone": 9.829768706610786e-05,
+      "nicardipine": 0.0102405889313599,
+      "nitroglycerin": 0.014662115056374258,
+      "nitroprusside": 0.0013999407008518242,
+      "norepinephrine": 0.07351718740400616,
+      "octreotide": 0.0019276229856319766,
+      "pantoprazole": 0.0021513303576913933,
+      "pentobarbital": 0.0001718873957256533,
+      "phenylephrine": 0.04721734740486093,
+      "procainamide": 4.487503105191881e-05,
+      "propofol": 0.08177993605308075,
+      "rocuronium": 0.0007370990963557735,
+      "sodium_bicarbonate": 0.0025266245161910715,
+      "sodium_chloride": 0.26503861122463424,
+      "tpn": 0.0033235569872827365,
+      "treprostinil": 4.7813277132699206e-05,
+      "vasopressin": 0.008056270083579745,
+      "vecuronium": 3.592673616954214e-05
+    }
+  }
+}

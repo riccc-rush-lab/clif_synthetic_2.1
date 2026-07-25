@@ -1,0 +1,302 @@
+{
+  "citation": "Johnson, A.E.W., Bulgarelli, L., Shen, L. et al. MIMIC-IV, a freely accessible electronic health record dataset. Sci Data 10, 1 (2023). https://doi.org/10.1038/s41597-022-01899-x \u2014 derived per the Common Longitudinal ICU data Format (CLIF) specification, github.com/Common-Longitudinal-ICU-data-Format/CLIF (see `reference_source` above for the exact pinned commit and retrieval date used by this pack).",
+  "clif_version": "2.1.0",
+  "field_sources": {
+    "hospitalization": [
+      {
+        "column": "patient_id",
+        "source": "source_present"
+      },
+      {
+        "column": "hospitalization_id",
+        "source": "source_present"
+      },
+      {
+        "column": "hospitalization_joined_id",
+        "source": "source_present"
+      },
+      {
+        "column": "admission_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "discharge_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "age_at_admission",
+        "source": "source_present"
+      },
+      {
+        "column": "admission_type_name",
+        "source": "source_present"
+      },
+      {
+        "column": "admission_type_category",
+        "source": "modeled"
+      },
+      {
+        "column": "discharge_name",
+        "source": "source_present"
+      },
+      {
+        "column": "discharge_category",
+        "source": "modeled"
+      },
+      {
+        "column": "zipcode_nine_digit",
+        "source": "source_present"
+      },
+      {
+        "column": "zipcode_five_digit",
+        "source": "source_present"
+      },
+      {
+        "column": "census_block_code",
+        "source": "source_present"
+      },
+      {
+        "column": "census_block_group_code",
+        "source": "source_present"
+      },
+      {
+        "column": "census_tract",
+        "source": "source_present"
+      },
+      {
+        "column": "state_code",
+        "source": "source_present"
+      },
+      {
+        "column": "county_code",
+        "source": "source_present"
+      }
+    ],
+    "labs": [
+      {
+        "column": "hospitalization_id",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_order_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_collect_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_result_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_order_name",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_order_category",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_name",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_category",
+        "source": "modeled"
+      },
+      {
+        "column": "lab_value",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_value_numeric",
+        "source": "modeled"
+      },
+      {
+        "column": "reference_unit",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_specimen_name",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_specimen_category",
+        "source": "source_present"
+      },
+      {
+        "column": "lab_loinc_code",
+        "source": "source_present"
+      }
+    ],
+    "medication_admin_continuous": [
+      {
+        "column": "hospitalization_id",
+        "source": "source_present"
+      },
+      {
+        "column": "med_order_id",
+        "source": "source_present"
+      },
+      {
+        "column": "admin_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "med_name",
+        "source": "source_present"
+      },
+      {
+        "column": "med_category",
+        "source": "modeled"
+      },
+      {
+        "column": "med_group",
+        "source": "source_present"
+      },
+      {
+        "column": "med_route_name",
+        "source": "source_present"
+      },
+      {
+        "column": "med_route_category",
+        "source": "source_present"
+      },
+      {
+        "column": "med_dose",
+        "source": "source_present"
+      },
+      {
+        "column": "med_dose_unit",
+        "source": "source_present"
+      },
+      {
+        "column": "mar_action_name",
+        "source": "source_present"
+      },
+      {
+        "column": "mar_action_category",
+        "source": "source_present"
+      }
+    ],
+    "patient": [
+      {
+        "column": "patient_id",
+        "source": "source_present"
+      },
+      {
+        "column": "race_name",
+        "source": "source_present"
+      },
+      {
+        "column": "race_category",
+        "source": "modeled"
+      },
+      {
+        "column": "ethnicity_name",
+        "source": "source_present"
+      },
+      {
+        "column": "ethnicity_category",
+        "source": "modeled"
+      },
+      {
+        "column": "sex_name",
+        "source": "source_present"
+      },
+      {
+        "column": "sex_category",
+        "source": "modeled"
+      },
+      {
+        "column": "birth_date",
+        "source": "source_present"
+      },
+      {
+        "column": "death_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "language_name",
+        "source": "source_present"
+      },
+      {
+        "column": "language_category",
+        "source": "source_present"
+      }
+    ],
+    "vitals": [
+      {
+        "column": "hospitalization_id",
+        "source": "source_present"
+      },
+      {
+        "column": "recorded_dttm",
+        "source": "source_present"
+      },
+      {
+        "column": "vital_name",
+        "source": "source_present"
+      },
+      {
+        "column": "vital_category",
+        "source": "modeled"
+      },
+      {
+        "column": "vital_value",
+        "source": "modeled"
+      },
+      {
+        "column": "meas_site_name",
+        "source": "source_present"
+      }
+    ]
+  },
+  "fit_source": {
+    "commit": "unknown",
+    "dataset_id": "MIMIC-IV-Ext-CLIF"
+  },
+  "pack_version": "1.0",
+  "reference_source": {
+    "retrieved_at": "2026-07-23",
+    "source_commit": "966bc5fb0dc0f5664405f833568886ad850d869d",
+    "source_repo": "https://github.com/Common-Longitudinal-ICU-data-Format/CLIF"
+  },
+  "split": {
+    "holdout_fraction": 0.2,
+    "holdout_n_patients": 73135,
+    "method": "sha1_mod_10000",
+    "seed": 20260723,
+    "train_n_patients": 291492
+  },
+  "suppression_audit": {
+    "overall": {
+      "cells_below_min_n": 0,
+      "dropped_no_fallback": 0,
+      "fell_back_to_coarser_aggregate": 0,
+      "fell_back_to_prior": 0,
+      "note": "counts only cells below the n>=20 floor; passing cells emit no record"
+    }
+  },
+  "tables": {
+    "hospitalization": {
+      "fitted": true
+    },
+    "labs": {
+      "fitted": true
+    },
+    "medication_admin_continuous": {
+      "fitted": true
+    },
+    "patient": {
+      "fitted": true
+    },
+    "spine": {
+      "fitted": true
+    },
+    "vitals": {
+      "fitted": true
+    }
+  }
+}
