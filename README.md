@@ -163,9 +163,16 @@ is regenerable byte-for-byte from the committed `base_pack/` + recipe.
 | [`base_pack/`](base_pack/) | ~84 KB | The **aggregate parameter pack** — no real data, seeds every dataset above and any you generate |
 
 Each dataset carries a `manifest.json` recording the recipe, seed, generator
-version, and per-table SHA-256 content hashes. Full-size masters (an 85k ICU
-cohort and a 365k whole-hospital population) are generated from `base_pack/` on
-demand — see below.
+version, and per-table SHA-256 content hashes.
+
+**Full-size masters.** The complete datasets — an **85k ICU cohort** and a **365k
+whole-hospital population** — are too large to commit here. Download them directly:
+
+<!-- Replace the line below with the shared download link (e.g. Dropbox). -->
+> 📥 **Full datasets:** _link coming soon_
+
+They are also reproducible from `base_pack/` on demand (see below), so the shared
+files and a local regeneration match by content hash.
 
 **How the shipped data was generated.** The committed samples and the reference
 masters were produced by `scripts/generate_deliverable.py` from the aggregate
