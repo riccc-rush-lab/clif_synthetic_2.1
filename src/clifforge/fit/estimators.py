@@ -595,12 +595,18 @@ def fit_lab_copula(
         presence[lab] = round(n_hosp_with / presence_denom, 6) if presence_denom > 0 else 0.0
 
     correlation = _co_measurement_correlation(labs, lab_order)
+    if icu_hospitalizations is not None:
+        presence_cohort = list(icu_hospitalizations)
+    else:
+        presence_cohort = presence_labs.select("hospitalization_id").unique().to_series().to_list()
+    presence_correlation = _presence_correlation(presence_labs, presence_cohort, lab_order)
 
     params: dict[str, object] = {
         "lab_order": lab_order,
         "lab_marginals": survived_marginals,
         "lab_presence": presence,
         "lab_correlation": correlation,
+        "lab_presence_correlation": presence_correlation,
     }
     return params, audit
 
@@ -635,6 +641,61 @@ def _co_measurement_correlation(labs: pl.DataFrame, lab_order: Sequence[str]) ->
                 if np.isfinite(rho):
                     ia, ib = index[cols[a]], index[cols[b]]
                     corr[ia, ib] = corr[ib, ia] = float(rho)
+
+    pd_corr = nearest_positive_definite_correlation(corr)
+    return [[round(float(v), 6) for v in row] for row in pd_corr]
+
+
+def _presence_correlation(
+    presence_labs: pl.DataFrame, cohort_ids: Sequence[str], lab_order: Sequence[str]
+) -> list[list[float]]:
+    """Phi (Pearson-on-indicator) correlation of per-stay lab presence over the cohort.
+
+    Real labs are ordered as panels — a basic metabolic panel yields sodium,
+    potassium, chloride, ... together; an arterial blood gas yields po2/pco2/ph
+    together — so their per-stay presence is strongly co-occurrent (measured
+    Jaccard ~0.97 for arterial gases, ~1.0 for the metabolic panel). Drawing each
+    lab's presence independently inflates any panel's *union* several-fold. This
+    fitted correlation lets the generator draw presence through a Gaussian copula
+    that preserves each lab's marginal presence while restoring co-occurrence.
+    Constant-presence labs (always/never measured) carry no off-diagonal mass.
+    Computed over the full cohort (absent stays contribute all-zero rows) and
+    nearest-PD projected.
+    """
+    k = len(lab_order)
+    if k == 0:
+        return []
+    if k == 1:
+        return [[1.0]]
+    n = len(cohort_ids)
+    corr = np.eye(k)
+    if n == 0:
+        return [[round(float(v), 6) for v in row] for row in corr]
+
+    # Stay x lab {0,1} indicator over the full cohort (left-join fills absent stays 0).
+    seen = (
+        presence_labs.filter(pl.col("lab_category").is_in(list(lab_order)))
+        .select("hospitalization_id", "lab_category")
+        .unique()
+        .with_columns(pl.lit(1.0).alias("present"))
+        .pivot(on="lab_category", index="hospitalization_id", values="present")
+    )
+    cohort = pl.DataFrame({"hospitalization_id": list(cohort_ids)})
+    wide = cohort.join(seen, on="hospitalization_id", how="left").fill_null(0.0)
+    present_cols = [c for c in lab_order if c in wide.columns]
+    ind = wide.select(present_cols).to_numpy().astype(float)
+
+    # Phi correlation = Pearson on indicators; skip constant (zero-variance) columns.
+    index = {name: i for i, name in enumerate(lab_order)}
+    active_local = [j for j in range(len(present_cols)) if ind[:, j].std() > 0.0]
+    if len(active_local) >= 2:
+        sub = ind[:, active_local]
+        cmat = np.corrcoef(sub, rowvar=False)
+        for aj, a in enumerate(active_local):
+            for bj, b in enumerate(active_local):
+                if a != b and np.isfinite(cmat[aj, bj]):
+                    ia, ib = index[present_cols[a]], index[present_cols[b]]
+                    corr[ia, ib] = float(cmat[aj, bj])
 
     pd_corr = nearest_positive_definite_correlation(corr)
     return [[round(float(v), 6) for v in row] for row in pd_corr]

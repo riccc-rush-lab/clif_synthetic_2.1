@@ -125,6 +125,28 @@ def test_sojourns_scaled_and_mortality_scaled() -> None:
     assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.66) < 1e-9
 
 
+def test_mortality_target_solves_scale_to_hit_target() -> None:
+    # With uniform per-level expired rates, expected cohort mortality equals the
+    # scaled rate, so the solved scale lands every peak cell exactly on the target.
+    target = 0.3
+    out = recalibrate_to_network_median(_pack(expired_rate=0.2), mortality_target=target).tables[
+        "spine"
+    ]["params"]
+    for cell in out["expired_rate_by_peak_level"].values():
+        assert abs(cell["expired_rate"] - target) < 1e-3
+    # The target path overrides the fixed mortality_scale (which would give 0.132).
+    assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.66) > 0.1
+
+
+def test_mortality_target_unreachable_returns_ceiling_without_diverging() -> None:
+    # Zero base expired rates cannot produce any target > 0; the solver returns the
+    # bracket ceiling rather than diverging, and no deaths are manufactured (0 * s = 0).
+    out = recalibrate_to_network_median(_pack(expired_rate=0.0), mortality_target=0.3).tables[
+        "spine"
+    ]["params"]
+    assert all(cell["expired_rate"] == 0.0 for cell in out["expired_rate_by_peak_level"].values())
+
+
 def test_derivative_rate_overrides_propagate() -> None:
     # Users spin derivatives by overriding rates; the overrides must reach the pack.
     out = recalibrate_to_network_median(

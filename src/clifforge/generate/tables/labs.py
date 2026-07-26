@@ -12,6 +12,11 @@ missingness artifact is manufactured (KTD-4):
 1. Draw the present-set once per hospitalization — each lab is present for the
    stay with its fitted ``lab_presence`` probability. This matches the fit
    definition (presence = fraction of hospitalizations with >=1 measurement).
+   Presence is drawn through a Gaussian copula over the fitted
+   ``lab_presence_correlation`` so co-ordered panels (metabolic panel, arterial
+   blood gas) appear together and their union does not inflate; the copula
+   preserves each lab's marginal presence. Packs without that matrix fall back
+   to independent Bernoulli draws.
 2. At each order time in the stay's ICU windows, draw the **full** correlated
    45-vector from the copula (``z = L @ N(0, I)`` with ``L`` the Cholesky factor
    of the correlation), map each component through its log-normal marginal
@@ -39,6 +44,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+from scipy.special import ndtri
 
 from clifforge.fit.param_pack import ParamPack
 from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, UTC_DATETIME, grid_step_hours
@@ -160,10 +166,20 @@ def sample_labs(
     grid_step = grid_step_hours(pack)
     n = len(order)
 
-    # (1) present-set for the whole stay — one vector draw, matching the fit's
-    #     per-hospitalization presence definition.
+    # (1) present-set for the whole stay — one draw, matching the fit's
+    #     per-hospitalization presence definition. When the pack carries a fitted
+    #     presence correlation, draw through a Gaussian copula so co-ordered panels
+    #     (a metabolic panel, an arterial blood gas) are present together and a
+    #     panel's union does not inflate; the copula preserves each lab's marginal
+    #     presence exactly. Older/demo packs without it fall back to independent
+    #     Bernoulli draws.
     presence_vec = np.array([presence.get(lab, 0.0) for lab in order], dtype=float)
-    present_mask = rng.random(n) < presence_vec
+    pres_corr = params.get("lab_presence_correlation")
+    if pres_corr:
+        latent = _cholesky(pres_corr) @ rng.standard_normal(n)
+        present_mask = latent < ndtri(presence_vec)  # P(latent < Φ⁻¹(p)) = p
+    else:
+        present_mask = rng.random(n) < presence_vec
 
     icu_hours = float(params.get("panel_interval_hours", _LAB_PANEL_INTERVAL_HOURS))
     ward_hours_raw = params.get("ward_panel_interval_hours")

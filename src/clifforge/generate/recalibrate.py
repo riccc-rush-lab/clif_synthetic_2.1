@@ -172,6 +172,49 @@ def _scale_sojourns(sojourn: dict[str, dict[str, Any]], multipliers: dict[str, f
             block["mean_hours"] = mean * mult
 
 
+def _expected_mortality(
+    peak_dist: dict[str, float],
+    expired_by_peak: dict[str, dict[str, float]],
+    marginal_expired: float,
+    scale: float,
+) -> float:
+    """Analytic cohort mortality under a peak distribution and a mortality scale.
+
+    Because escalation is heavily tempered, a stay's peak acuity tracks its start
+    level, so ``peak_dist`` (the start law) approximates the sampled peak
+    distribution. Each level contributes its (scaled, rate-capped) expired rate.
+    """
+    e = 0.0
+    for level, prob in peak_dist.items():
+        cell = expired_by_peak.get(str(level))
+        rate = float(cell["expired_rate"]) if cell else marginal_expired
+        e += prob * min(1.0, rate * scale)
+    return e
+
+
+def _solve_mortality_scale(
+    peak_dist: dict[str, float],
+    expired_by_peak: dict[str, dict[str, float]],
+    marginal_expired: float,
+    target: float,
+) -> float:
+    """Bisection for the mortality scale that lands cohort mortality on ``target``.
+
+    Monotone in ``scale`` (each term is non-decreasing), so bisection converges.
+    Falls back to the upper bracket when the target exceeds what capping allows.
+    """
+    lo, hi = 0.0, 100.0
+    if _expected_mortality(peak_dist, expired_by_peak, marginal_expired, hi) < target:
+        return hi
+    for _ in range(60):
+        mid = (lo + hi) / 2.0
+        if _expected_mortality(peak_dist, expired_by_peak, marginal_expired, mid) < target:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
 def repair_vitals_dispersion(tables: dict[str, Any]) -> None:
     """Repair *corrupted* AR(1) ``sigma`` and clamp state means into physiologic range.
 
@@ -208,6 +251,7 @@ def recalibrate_to_network_median(
     disch_damp: float = 0.55,
     sojourn_multipliers: dict[str, float] | None = None,
     mortality_scale: float = 0.66,
+    mortality_target: float | None = None,
     flag_target_prevalence: dict[str, float] | None = None,
     prone_prob_severe: float = 0.026,
     vasopressor_cv_boost: float = 3.0,
@@ -239,8 +283,21 @@ def recalibrate_to_network_median(
         spine["support_level_sojourn"],
         sojourn_multipliers or {"1": 3.2, "2": 4.6, "3": 2.8, "4": 2.8},
     )
+    # Mortality: scale peak-coupled expired rates. ``mortality_target`` (an exact
+    # cohort in-hospital mortality) takes precedence — the scale is solved
+    # analytically against the peak-target distribution — otherwise the fixed
+    # ``mortality_scale`` is applied.
+    if mortality_target is not None:
+        eff_mortality_scale = _solve_mortality_scale(
+            target,
+            spine["expired_rate_by_peak_level"],
+            float(spine.get("outcome_marginal", {}).get("expired", 0.0)),
+            mortality_target,
+        )
+    else:
+        eff_mortality_scale = mortality_scale
     for cell in spine["expired_rate_by_peak_level"].values():
-        cell["expired_rate"] = min(1.0, cell["expired_rate"] * mortality_scale)
+        cell["expired_rate"] = min(1.0, cell["expired_rate"] * eff_mortality_scale)
 
     # Outcome-coupled terminal deterioration: expiring stays decline into
     # multi-organ failure over their final window (see spine._apply_...).
