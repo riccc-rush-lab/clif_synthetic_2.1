@@ -19,9 +19,16 @@ missingness artifact is manufactured (KTD-4):
    to independent Bernoulli draws.
 2. At each order time in the stay's ICU windows, draw the **full** correlated
    45-vector from the copula (``z = L @ N(0, I)`` with ``L`` the Cholesky factor
-   of the correlation), map each component through its log-normal marginal
-   (``value = expm1(log_mean + log_sd * z)``), and emit a row **only** for labs
-   in the present-set. Absent labs are native nulls (no row), never imputed.
+   of the correlation), map each component through its marginal, and emit a row
+   **only** for labs in the present-set. When the pack carries ``lab_quantiles``,
+   each component is mapped by the probability-integral transform — ``u = Φ(z)``
+   then inverse-CDF via the fitted quantile grid (``np.interp(u, probs, grid)``) —
+   so the lab's marginal matches real exactly (a single log-normal cannot capture
+   creatinine's CKD tail, lactate's skew, or troponin's bimodality) while the
+   copula's rank-correlation is preserved. Packs without it fall back to the
+   log-normal marginal (``value = expm1(log_mean + log_sd * z)``). Neither map
+   draws rng, so the stream is identical. Absent labs are native nulls (no row),
+   never imputed.
 
 Every value is clamped into the consortium outlier bounds (R9). Creatinine and
 bun are shifted up in log space when the spine's renal-failure flag is set at the
@@ -44,8 +51,9 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-from scipy.special import ndtri
+from scipy.special import ndtr, ndtri
 
+from clifforge.fit.estimators import LAB_QUANTILE_PROBS
 from clifforge.fit.param_pack import ParamPack
 from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL, UTC_DATETIME, grid_step_hours
 from clifforge.generate.spine import SpineFrame
@@ -62,6 +70,11 @@ _LAB_PANEL_INTERVAL_HOURS = 24.0
 #: clinical coupling, not a fitted quantity.
 _RENAL_MARKERS = frozenset({"creatinine", "bun"})
 _RENAL_LOG_SHIFT = 0.5
+#: Value-space equivalent of the log1p-space renal shift, for the empirical-quantile
+#: marginal path (which produces a value directly, not a log1p value): a multiplicative
+#: bump ``exp(_RENAL_LOG_SHIFT)`` (~1.65), so creatinine/bun still rise with renal
+#: failure. This is the ``expm1(log1p(v) + shift)`` coupling approximated as ``v * e^shift``.
+_RENAL_VALUE_FACTOR = float(np.exp(_RENAL_LOG_SHIFT))
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
 
@@ -161,6 +174,7 @@ def sample_labs(
     params = _labs_params(pack)
     order: list[str] = params["lab_order"]
     marginals: dict[str, dict[str, float]] = params["lab_marginals"]
+    quantiles: dict[str, list[float]] | None = params.get("lab_quantiles")
     presence: dict[str, float] = params["lab_presence"]
     chol = _cholesky(params["lab_correlation"])
     grid_step = grid_step_hours(pack)
@@ -196,13 +210,27 @@ def sample_labs(
         for i, lab in enumerate(order):
             if not present_mask[i]:
                 continue
-            marg = marginals.get(lab)
-            if marg is None:
-                continue
-            log_val = marg["log_mean"] + marg["log_sd"] * float(z[i])
-            if renal and lab in _RENAL_MARKERS:
-                log_val += _RENAL_LOG_SHIFT  # R12 renal coupling
-            value = _clamp(float(np.expm1(log_val)), lab)
+            grid = quantiles.get(lab) if quantiles is not None else None
+            if grid is not None:
+                # Empirical inverse-CDF marginal: push the latent through the
+                # standard-normal CDF (probability-integral transform) then invert
+                # via the fitted quantile grid, so the lab's marginal matches real
+                # exactly while the copula's rank-correlation (carried by ``z``) is
+                # preserved. ``ndtr`` and ``np.interp`` draw no rng — the stream and
+                # draw counts are identical to the log-normal path.
+                u = float(ndtr(float(z[i])))
+                value = float(np.interp(u, LAB_QUANTILE_PROBS, grid))
+                if renal and lab in _RENAL_MARKERS:
+                    value *= _RENAL_VALUE_FACTOR  # R12 renal coupling (value space)
+            else:
+                marg = marginals.get(lab)
+                if marg is None:
+                    continue
+                log_val = marg["log_mean"] + marg["log_sd"] * float(z[i])
+                if renal and lab in _RENAL_MARKERS:
+                    log_val += _RENAL_LOG_SHIFT  # R12 renal coupling
+                value = float(np.expm1(log_val))
+            value = _clamp(value, lab)
             value = round(value, 4)
             observations.append(
                 LabObservation(

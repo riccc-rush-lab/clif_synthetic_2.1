@@ -118,11 +118,40 @@ def test_network_median_peak_target_is_icu_conditioned() -> None:
 
 
 def test_sojourns_scaled_and_mortality_scaled() -> None:
-    out = recalibrate_to_network_median(_pack(expired_rate=0.2)).tables["spine"]["params"]
-    # Level-1 sojourn scale (params[2]) multiplied by the default 3.2x.
+    # sojourn_shape_scale=1.0 isolates the pure scale multiply (no shape tightening).
+    out = recalibrate_to_network_median(_pack(expired_rate=0.2), sojourn_shape_scale=1.0).tables[
+        "spine"
+    ]["params"]
+    # Level-1 sojourn scale (params[2]) multiplied by the default 3.2x, sigma untouched.
     assert out["support_level_sojourn"]["1"]["params"][2] == 5.0 * 3.2
+    assert out["support_level_sojourn"]["1"]["params"][0] == 1.0
     # Peak mortality scaled by the default 0.66.
     assert abs(out["expired_rate_by_peak_level"]["4"]["expired_rate"] - 0.2 * 0.66) < 1e-9
+
+
+def test_sojourn_shape_scale_tightens_lognorm_and_holds_median() -> None:
+    import math
+
+    from clifforge.generate.recalibrate import _SOJOURN_MEAN_COMPENSATION
+
+    shape_scale = 0.5
+    pack = _pack()
+    before = pack.tables["spine"]["params"]["support_level_sojourn"]["1"]["params"]
+    sigma0 = before[0]
+    scale0 = before[2] * 3.2  # scale after the default 3.2x level-1 multiplier
+
+    lvl1 = recalibrate_to_network_median(pack, sojourn_shape_scale=shape_scale).tables["spine"][
+        "params"
+    ]["support_level_sojourn"]["1"]["params"]
+    # sigma (params[0]) is tightened by the knob — the tail-fattening lever.
+    assert abs(lvl1[0] - sigma0 * shape_scale) < 1e-12
+    # scale (params[2] == median, since loc == 0) is bumped by the documented partial
+    # mean-compensation, so it grows but by less than a full mean-preserving bump.
+    bump = sigma0**2 * (1.0 - shape_scale**2) / 2.0 * _SOJOURN_MEAN_COMPENSATION
+    assert abs(lvl1[2] - scale0 * math.exp(bump)) < 1e-9
+    assert scale0 < lvl1[2] < scale0 * math.exp(sigma0**2 * (1.0 - shape_scale**2) / 2.0)
+    # input pack is not mutated (R22).
+    assert pack.tables["spine"]["params"]["support_level_sojourn"]["1"]["params"][0] == sigma0
 
 
 def test_mortality_target_solves_scale_to_hit_target() -> None:

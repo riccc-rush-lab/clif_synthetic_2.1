@@ -239,10 +239,10 @@ def test_fit_ar1_by_state_dispersion_is_heteroscedastic() -> None:
 # --------------------------------------------------------------------------- #
 # Lab copula
 # --------------------------------------------------------------------------- #
-def _lab_frame() -> pl.DataFrame:
+def _lab_frame(n_hosp: int = 60) -> pl.DataFrame:
     rng = np.random.default_rng(1)
     rows = []
-    for h in range(60):
+    for h in range(n_hosp):
         base = rng.normal(0, 1)
         for interval in range(4):
             creat = np.expm1(1.0 + 0.5 * base + rng.normal(0, 0.2))
@@ -359,6 +359,40 @@ def test_lab_presence_correlation_captures_panel_co_occurrence() -> None:
     # lab is negatively correlated with them.
     assert corr[idx["wbc"], idx["hemoglobin"]] > 0.9
     assert corr[idx["wbc"], idx["lactate"]] < 0.0
+
+
+def test_lab_quantiles_grid_per_lab_monotone() -> None:
+    # 700 hosp x 4 intervals = 2800 records/lab, clearing the >= 2000 quantile gate.
+    params, _ = estimators.fit_lab_copula(_lab_frame(700), n_hospitalizations=700)
+    quantiles = params["lab_quantiles"]
+    order = params["lab_order"]
+    # One grid per surviving lab (all dense enough), gated like the log-normal marginals.
+    assert set(quantiles) == set(order)
+    assert set(quantiles) == set(params["lab_marginals"])
+    for grid in quantiles.values():
+        # Fixed 101-point probability grid, monotonically non-decreasing (inverse-CDF).
+        assert len(grid) == len(estimators.LAB_QUANTILE_PROBS) == 101
+        assert all(b >= a for a, b in zip(grid, grid[1:], strict=False))
+
+
+def test_lab_quantiles_recover_empirical_quantiles() -> None:
+    # The fitted grid is the empirical inverse-CDF of the real values: its endpoints
+    # bracket min/max and the midpoint tracks the median.
+    frame = _lab_frame(700)
+    params, _ = estimators.fit_lab_copula(frame, n_hospitalizations=700)
+    creat = frame.filter(pl.col("lab_category") == "creatinine")["value"].to_numpy()
+    grid = params["lab_quantiles"]["creatinine"]
+    assert abs(grid[0] - float(np.min(creat))) < 1e-3
+    assert abs(grid[-1] - float(np.max(creat))) < 1e-3
+    assert abs(grid[50] - float(np.median(creat))) < 1e-3
+
+
+def test_lab_quantiles_gated_out_for_sparse_labs() -> None:
+    # A sparse lab (< 20 records per grid interval) keeps the log-normal marginal only,
+    # so a fine grid never approaches the raw sorted values (leakage guard).
+    params, _ = estimators.fit_lab_copula(_lab_frame(60), n_hospitalizations=60)
+    assert params["lab_marginals"]  # marginals still fit
+    assert params["lab_quantiles"] == {}  # but no quantile grids for sparse labs
 
 
 def test_nearest_pd_repairs_indefinite_matrix() -> None:

@@ -43,9 +43,24 @@ from clifforge.fit.cell_gate import SuppressionRecord, suppress
 #: 1-D/2-D float64 array alias for the numeric estimator internals.
 _F64 = NDArray[np.float64]
 
+#: Fixed probability grid for the empirical (inverse-CDF) lab marginals: 101 points
+#: 0.00, 0.01, ..., 1.00. A single log-normal cannot capture real lab shapes
+#: (creatinine's CKD tail, lactate's right skew, troponin's bimodality); the fitted
+#: quantile grid on this grid, driven through the copula's probability-integral
+#: transform at generation, matches each lab's marginal exactly while preserving the
+#: copula's rank-correlation. Shared with the labs generator (single source of truth).
+LAB_QUANTILE_PROBS: _F64 = np.linspace(0.0, 1.0, 101)
+
+#: Minimum record count for a lab to receive an empirical quantile marginal: >= 20
+#: records per grid interval (100 intervals), mirroring the n >= 20 cell floor. Below
+#: this the fine grid would approach the raw sorted values (a leakage risk the pack's
+#: value-level scan rejects), so sparser labs fall back to the log-normal marginal.
+_QUANTILE_MIN_RECORDS: int = 20 * (LAB_QUANTILE_PROBS.size - 1)
+
 __all__ = [
     "DISCHARGE_STATE",
     "EstimatorResult",
+    "LAB_QUANTILE_PROBS",
     "fit_categorical_marginals",
     "fit_continuous_marginals",
     "fit_transitions",
@@ -550,9 +565,12 @@ def fit_lab_copula(
     ``lab_category``, ``value``. Correlation is computed over lab pairs measured
     in the **same** (hospitalization, interval) window, then projected to the
     nearest positive-definite correlation matrix. Per-lab marginals are fit on
-    ``log1p`` values (labs are heavy-tailed and non-negative). Each lab is gated
-    at ``min_n`` observations; presence rate is the fraction of hospitalizations
-    with at least one measurement.
+    ``log1p`` values (labs are heavy-tailed and non-negative), and a per-lab
+    empirical quantile grid (``lab_quantiles``, on :data:`LAB_QUANTILE_PROBS`) is
+    fit over the same values so the generator can match each lab's marginal shape
+    exactly through an inverse-CDF map. Each lab is gated at ``min_n``
+    observations; presence rate is the fraction of hospitalizations with at least
+    one measurement.
 
     ``presence`` is conditioned on the **ICU-exposed** cohort when
     ``icu_hospitalizations`` is supplied — the population the generator targets.
@@ -566,9 +584,11 @@ def fit_lab_copula(
     counts = {r["lab_category"]: int(r["n"]) for r in per_lab_counts.iter_rows(named=True)}
 
     marginals: dict[str, dict[str, float]] = {}
+    values_by_lab: dict[str, _F64] = {}
     for lab, sub in labs.group_by("lab_category"):
         name = lab[0] if isinstance(lab, tuple) else lab
         vals = sub["value"].to_numpy()
+        values_by_lab[name] = vals
         logv = np.log1p(np.clip(vals, a_min=0.0, a_max=None))
         marginals[name] = {
             "log_mean": round(float(np.mean(logv)), 6),
@@ -577,6 +597,22 @@ def fit_lab_copula(
 
     survived_marginals, audit = suppress(counts, marginals, min_n=min_n)
     lab_order = sorted(survived_marginals)
+
+    # Empirical inverse-CDF marginal per surviving lab: the fitted quantile grid on
+    # ``LAB_QUANTILE_PROBS`` over the SAME null-dropped gridded values used for the
+    # log-normal marginal. Driven through the copula's probability-integral transform
+    # at generation, it matches each lab's real marginal exactly (the log-normal block
+    # above is retained as a fallback for older/sparser labs). Non-decreasing by
+    # construction. Emitted only for labs with enough records that the fine grid is a
+    # genuine aggregate (>= 20 records per interval, mirroring the n>=20 cell floor);
+    # a fine grid over sparse values approaches the raw sorted data, so sparse labs
+    # keep the two-parameter log-normal marginal — this also keeps the pack past the
+    # value-level leakage scan (array length must stay well under the record count).
+    lab_quantiles: dict[str, list[float]] = {
+        lab: [round(float(q), 4) for q in np.quantile(values_by_lab[lab], LAB_QUANTILE_PROBS)]
+        for lab in lab_order
+        if counts.get(lab, 0) >= _QUANTILE_MIN_RECORDS
+    }
 
     if icu_hospitalizations is not None:
         presence_labs = labs.filter(pl.col("hospitalization_id").is_in(list(icu_hospitalizations)))
@@ -604,6 +640,7 @@ def fit_lab_copula(
     params: dict[str, object] = {
         "lab_order": lab_order,
         "lab_marginals": survived_marginals,
+        "lab_quantiles": lab_quantiles,
         "lab_presence": presence,
         "lab_correlation": correlation,
         "lab_presence_correlation": presence_correlation,
