@@ -30,10 +30,42 @@ from clifforge.generate.recalibrate import (
     recalibrate_to_network_median,
 )
 
-__all__ = ["VariantSpec", "list_presets", "load_preset", "load_spec", "spec_to_pack"]
+__all__ = [
+    "VariantSpec",
+    "default_base_pack_path",
+    "list_presets",
+    "load_preset",
+    "load_spec",
+    "spec_to_pack",
+]
 
-#: Shipped example variant specs (repo-root ``presets/``); a preset *is* a spec.
-_PRESET_DIR = Path(__file__).resolve().parents[2] / "presets"
+
+def _resolve_data_dir(name: str) -> Path:
+    """Locate a shipped data directory (``presets`` / ``base_pack``).
+
+    Prefers the copy bundled inside the installed wheel (``clifforge/_data/<name>``,
+    put there by hatch ``force-include``) so a ``pip install`` works standalone;
+    falls back to the repo-root copy for an editable/development checkout.
+    """
+    packaged = Path(__file__).resolve().parent / "_data" / name
+    return packaged if packaged.is_dir() else Path(__file__).resolve().parents[2] / name
+
+
+#: Shipped example variant specs; a preset *is* a spec.
+_PRESET_DIR = _resolve_data_dir("presets")
+
+
+def default_base_pack_path() -> str:
+    """The base pack to use when ``--base-pack`` is not given.
+
+    A local ``./base_pack`` (a clone, or a pack you built) wins; otherwise the
+    shareable base pack shipped inside the package, so a ``pip install`` can
+    generate calibrated datasets without cloning the repo.
+    """
+    if Path("base_pack").is_dir():
+        return "base_pack"
+    return str(_resolve_data_dir("base_pack"))
+
 
 _KNOWN_TOP = {"name", "n", "seed", "base_pack", "mode", "demographics", "rates"}
 #: Population modes: the ICU cohort (network-median, every stay an ICU stay) or the
