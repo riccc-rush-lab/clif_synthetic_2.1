@@ -19,9 +19,21 @@ through the spine/orchestrator rather than by cross-reading this table.
 
 Un-fitted fields use documented MIMIC-appropriate constants rather than invented
 distributions (R15): ``hospital_type = "academic"`` (MIMIC is a single academic
-center), ``location_type = "medical_icu"`` for ICU rows (null off-ICU). Movements
-are a deterministic function of the spine, so they are reproducible under any
-``rng`` (R22); ``rng`` is accepted for the uniform generator signature but unused.
+center), ``location_type = "medical_icu"`` for ICU rows (null off-ICU).
+
+**Arrival location.** By default every movement is a deterministic function of the
+spine, reproducible under any ``rng`` (R22). A derived pack may instead carry an
+``arrival_location_marginal`` (an ED/OR-dominant mix over ``location_category``) and
+a ``direct_icu_frac``: the *first* (admission) segment's location is then drawn from
+the passed ``rng`` — ED-dominant with ward / procedural / stepdown variety — rather
+than hardcoded to the emergency department, so the full hospital population arrives
+through a realistic spread of front doors. A stay whose spine reaches invasive
+ventilation is routed straight to ``icu`` (a direct ICU admit) with probability
+``direct_icu_frac``; the remainder of reaches-ICU stays arrive elsewhere and
+transfer into ICU later, so transfer-to-ICU is ``reaches_icu * (1 - direct_icu_frac)``.
+Intervals after the first keep the spine-driven mapping. When no
+``arrival_location_marginal`` is set (the ICU master and demo packs) the ``rng`` is
+unused and the admission location is unchanged, preserving byte-for-byte output.
 """
 
 from __future__ import annotations
@@ -39,6 +51,7 @@ from clifforge.generate._common import (
     UTC_DATETIME,
     grid_step_hours,
 )
+from clifforge.generate.sampling import categorical
 from clifforge.generate.spine import SpineFrame
 
 __all__ = ["ICU_MIN_SUPPORT_LEVEL", "AdtMovement", "adt_frame", "icu_windows", "sample_adt"]
@@ -85,17 +98,50 @@ def _category_for(level: int, idx: int, enrich: bool) -> str:
     return "ward"
 
 
-def _location_segments(support_level: list[int], *, enrich: bool = False) -> list[tuple[str, int]]:
-    """Run-length-encode the acuity trajectory into ``(category, n_intervals)``."""
+def _location_segments(
+    support_level: list[int], *, enrich: bool = False, arrival: str | None = None
+) -> list[tuple[str, int]]:
+    """Run-length-encode the acuity trajectory into ``(category, n_intervals)``.
+
+    ``arrival`` overrides only the admission interval's category (idx 0); all later
+    intervals keep the spine-driven mapping. Consecutive equal categories are still
+    collapsed, so a ``ward`` arrival that continues at ward acuity merges naturally.
+    """
     segments: list[tuple[str, int]] = []
     for idx, level in enumerate(support_level):
-        category = _category_for(level, idx, enrich)
+        if idx == 0 and arrival is not None:
+            category = arrival
+        else:
+            category = _category_for(level, idx, enrich)
         if segments and segments[-1][0] == category:
             prev_cat, prev_n = segments[-1]
             segments[-1] = (prev_cat, prev_n + 1)
         else:
             segments.append((category, 1))
     return segments
+
+
+def _arrival_category(
+    spine: SpineFrame, params: dict[str, object], rng: np.random.Generator
+) -> str | None:
+    """Draw the admission-interval location, or ``None`` to keep the default mapping.
+
+    When the pack's adt params carry an ``arrival_location_marginal`` the stay's
+    front door is sampled from the passed ``rng`` (R22): a spine that reaches
+    invasive ventilation is a direct ICU admit (``icu``) with probability
+    ``direct_icu_frac``, otherwise the arrival is drawn from the marginal (an
+    ED/OR-dominant mix with ward / stepdown variety). Absent the marginal this
+    returns ``None`` and the caller falls back to the unchanged spine mapping, so
+    the ``rng`` is never drawn and output stays byte-for-byte identical.
+    """
+    marginal = params.get("arrival_location_marginal")
+    if not isinstance(marginal, dict) or not marginal:
+        return None
+    reaches_icu = bool(spine.support_level) and max(spine.support_level) >= IMV_MIN_SUPPORT_LEVEL
+    direct_icu_frac = float(params.get("direct_icu_frac", 0.0))  # type: ignore[arg-type]
+    if reaches_icu and rng.random() < direct_icu_frac:
+        return "icu"
+    return categorical(marginal, rng)
 
 
 def sample_adt(
@@ -112,19 +158,20 @@ def sample_adt(
     Segments tile ``[admit_dttm, admit_dttm + n_intervals * grid_step]`` with no
     gaps or overlaps; the terminal ``out_dttm`` equals the hospitalization's
     discharge (both use the pack grid). ``hospitalization_id`` defaults to the
-    spine's own id.
+    spine's own id. The ``rng`` is drawn only when the pack carries an
+    ``arrival_location_marginal`` (see :func:`_arrival_category`); otherwise the
+    result is a pure function of the spine.
     """
-    del rng  # deterministic from the spine; accepted for signature uniformity
     hid = hospitalization_id if hospitalization_id is not None else spine.hospitalization_id
     grid_step = grid_step_hours(pack)
     block = pack.tables.get("adt", {})
-    enrich = (
-        bool(block.get("params", {}).get("enrich_locations")) if isinstance(block, dict) else False
-    )
+    params = block.get("params", {}) if isinstance(block, dict) else {}
+    enrich = bool(params.get("enrich_locations"))
+    arrival = _arrival_category(spine, params, rng)
 
     movements: list[AdtMovement] = []
     cursor = admit_dttm
-    for category, n_int in _location_segments(spine.support_level, enrich=enrich):
+    for category, n_int in _location_segments(spine.support_level, enrich=enrich, arrival=arrival):
         out = cursor + timedelta(hours=n_int * grid_step)
         movements.append(
             AdtMovement(

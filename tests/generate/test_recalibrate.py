@@ -224,6 +224,56 @@ def test_full_hospital_enables_location_enrichment() -> None:
     assert out["adt"]["params"]["enrich_locations"] is True
 
 
+def test_full_hospital_sets_arrival_marginal_and_direct_icu_frac() -> None:
+    # The arrival (first-location) mix and direct-ICU path replace the 100%-ED door.
+    from clifforge.reference import categories
+
+    out = recalibrate_to_full_hospital(_pack()).tables
+    params = out["adt"]["params"]
+    marginal = params["arrival_location_marginal"]
+    assert marginal["ed"] > max(marginal[k] for k in marginal if k != "ed")  # ED-dominant
+    assert set(marginal) <= set(categories("adt", "location_category"))  # exact mCIDE
+    assert 0.0 < params["direct_icu_frac"] < 1.0
+    # Overrides propagate.
+    ov = recalibrate_to_full_hospital(
+        _pack(), arrival_location_marginal={"ed": 0.5, "ward": 0.5}, direct_icu_frac=0.25
+    ).tables["adt"]["params"]
+    assert ov["arrival_location_marginal"] == {"ed": 0.5, "ward": 0.5}
+    assert ov["direct_icu_frac"] == 0.25
+
+
+def test_full_hospital_retargets_admission_type_marginal() -> None:
+    # The hospitalization admission-type mix is retargeted: direct ~0.20, ED/elective
+    # dominant, small osh/facility/other — all exact mCIDE members.
+    from clifforge.reference import categories
+
+    out = recalibrate_to_full_hospital(_pack()).tables
+    adm = out["hospitalization"]["params"]["admission_type_category_marginal"]
+    assert set(adm) <= set(categories("hospitalization", "admission_type_category"))
+    assert 0.18 <= adm["direct"] <= 0.22
+    assert adm["ed"] + adm["elective"] >= 0.70
+    # Override propagates.
+    ov = recalibrate_to_full_hospital(
+        _pack(), admission_type_category_marginal={"ed": 0.7, "direct": 0.3}
+    ).tables["hospitalization"]["params"]["admission_type_category_marginal"]
+    assert ov == {"ed": 0.7, "direct": 0.3}
+
+
+def test_full_hospital_does_not_mutate_hospitalization_block() -> None:
+    # R22: the admission-type override lands only on the deep copy.
+    pack = ParamPack(
+        manifest={},
+        tables={
+            "spine": {"params": _spine_params()},
+            "hospitalization": {"params": {"admission_type_category_marginal": {"ed": 1.0}}},
+        },
+    )
+    recalibrate_to_full_hospital(pack)
+    assert pack.tables["hospitalization"]["params"]["admission_type_category_marginal"] == {
+        "ed": 1.0
+    }
+
+
 def test_full_hospital_start_law_is_ward_dominant() -> None:
     # Most start/peak mass sits below the stepdown tier (levels 0-1 = ward/ED), the
     # opposite of the ICU-conditioned mode, which puts all mass at level 2+.
