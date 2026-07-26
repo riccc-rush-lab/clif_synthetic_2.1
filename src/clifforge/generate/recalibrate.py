@@ -448,29 +448,22 @@ def recalibrate_to_network_median(
     return ParamPack(manifest=dict(pack.manifest), tables=tables)
 
 
-#: Full-population arrival (first ADT location) mix — the hospital's front doors.
-#: ED-dominant (emergency admits) with a large surgical/OR (``procedural``) and
-#: direct-to-floor (``ward``) share and a thin ``stepdown`` slice, so no single
-#: location dominates the first-location distribution. Drawn for every stay that is
-#: not routed to a direct-ICU admit (see ``direct_icu_frac``). mCIDE members only.
-_FULL_HOSPITAL_ARRIVAL_MARGINAL: dict[str, float] = {
-    "ed": 0.60,
-    "ward": 0.22,
-    "procedural": 0.12,
-    "stepdown": 0.06,
-}
-
-#: Full-population admission-type mix. ED (emergency) and elective (OR/surgical)
-#: dominate; ``direct`` (direct admits) is ~0.20; small transfer-in shares from an
-#: outside hospital (``osh``) / other facility (``facility``) / ``other``. Overrides
-#: the base pack's ED-heavy fitted marginal. mCIDE members only.
-_FULL_HOSPITAL_ADMISSION_TYPE_MARGINAL: dict[str, float] = {
-    "ed": 0.55,
-    "direct": 0.20,
-    "elective": 0.18,
+#: Full-population **coupled admission-route** mix — the single per-stay pathway that
+#: drives BOTH the hospitalization ``admission_type_category`` and the ADT arrival
+#: location (KTD-6), so the two agree per stay. Drawn once per stay on the latent
+#: spine (see ``spine.sample_spine``); the route values ARE mCIDE
+#: ``admission_type_category`` members and map to arrival locations via
+#: ``adt._ROUTE_TO_ARRIVAL`` (``ed``->ed, ``elective``->procedural, ``direct``->ward,
+#: ``osh``->icu, ``facility``->ward, ``other``->ed). ED-dominant emergency flow with a
+#: small elective (OR) and direct-admit share and a thin outside-hospital (``osh``)
+#: referral pathway that arrives straight at the higher-level ICU. Normalized on draw.
+_FULL_HOSPITAL_ADMISSION_ROUTE_MARGINAL: dict[str, float] = {
+    "ed": 0.76,
+    "elective": 0.10,
+    "direct": 0.10,
     "osh": 0.03,
-    "facility": 0.02,
-    "other": 0.02,
+    "facility": 0.005,
+    "other": 0.005,
 }
 
 
@@ -479,7 +472,7 @@ def recalibrate_to_full_hospital(
     *,
     esc_keep: float = 0.04,
     stepdown_keep: float = 0.05,
-    icu_target: float = 0.10,
+    icu_target: float = 0.08,
     stepdown_target: float = 0.05,
     peak_target: dict[str, float] | None = None,
     disch_damp: float = 1.0,
@@ -488,9 +481,7 @@ def recalibrate_to_full_hospital(
     mortality_scale: float = 1.0,
     mortality_target: float | None = 0.021,
     flag_target_prevalence: dict[str, float] | None = None,
-    arrival_location_marginal: dict[str, float] | None = None,
-    direct_icu_frac: float = 0.38,
-    admission_type_category_marginal: dict[str, float] | None = None,
+    admission_route_marginal: dict[str, float] | None = None,
     prone_prob_severe: float = 0.026,
     niv_nippv_prob: float = 0.03,
     niv_hfnc_prob: float = 0.035,
@@ -507,8 +498,8 @@ def recalibrate_to_full_hospital(
     :func:`recalibrate_to_network_median`. Where that function conditions on an ICU
     stay (every trajectory peaks at the ICU floor or above), this one shapes a
     ward-dominant cohort in which most stays never leave ward/ED acuity, a minority
-    pass through stepdown, and ~15.6% reach an ICU tier — the mix measured on the
-    real full hospital population (ICU fraction 0.156, stepdown ~0.08, hospital-LOS
+    pass through stepdown, and ~15-17% reach an ICU tier — the mix measured on the
+    real full hospital population (ICU fraction ~0.156, stepdown ~0.08, hospital-LOS
     median ~67h, in-hospital mortality ~0.021).
 
     The transform is the same principled machine, retargeted:
@@ -517,27 +508,24 @@ def recalibrate_to_full_hospital(
       ed / ward / stepdown / icu location mix appears; after the admission interval a
       stay's ADT tier is driven by its spine support level (2 -> stepdown, >= 3 ->
       icu, else ward).
-    * **A realistic arrival (first-location) mix and direct-ICU path replace the
-      100%-ED front door.** The admission segment's location is drawn per stay from
-      ``arrival_location_marginal`` (an ED/OR-dominant mix with ward / stepdown
-      variety, default :data:`_FULL_HOSPITAL_ARRIVAL_MARGINAL`), except that a stay
-      whose spine reaches invasive ventilation is a *direct ICU admit* (arrives at
-      ``icu``) with probability ``direct_icu_frac``. The rest of the reaches-ICU
-      stays arrive elsewhere and transfer into ICU later, so transfer-to-ICU is
-      ``reaches_icu * (1 - direct_icu_frac)``; ``direct_icu_frac`` and ``icu_target``
-      are set so transfer-to-ICU is under 0.10 while direct-ICU is ~0.04-0.06 (probe
-      at n=5000, seed 5: reaches-ICU 0.149, direct-ICU 0.056, transfer 0.093,
-      first-location ed 0.56 / ward 0.21 / procedural 0.12 / stepdown 0.06 / icu 0.06
-      — ED-dominant with clear ward/procedural/icu/stepdown variety).
-    * **The admission-type mix is retargeted** off the base pack's ED-heavy fitted
-      marginal to a full-population mix (``admission_type_category_marginal``,
-      default :data:`_FULL_HOSPITAL_ADMISSION_TYPE_MARGINAL`): ``direct`` ~0.20 with
-      ED (emergency) and elective (OR) dominant and small osh/facility/other
-      transfer-in shares. This is the ``hospitalization`` table's own marginal and is
-      independent of the ADT arrival mix (KTD-6: the ADT generator reads only the
-      spine and its own pack params, never the hospitalization table's output, so the
-      two location/admission-type axes are calibrated separately, which is
-      acceptable for a synthetic cohort).
+    * **A single coupled admission route drives both the admission type and the
+      arrival location** (``admission_route_marginal``, default
+      :data:`_FULL_HOSPITAL_ADMISSION_ROUTE_MARGINAL`). The route is drawn once per
+      stay on the latent spine (KTD-6: the spine is the only cross-table channel), and
+      **both** the ``hospitalization`` generator (as ``admission_type_category``) and
+      the ``adt`` generator (as the mapped arrival location) read it, so a stay's
+      admission type and its front door always agree — unlike the earlier design, in
+      which the two axes were calibrated from independent marginals. The route values
+      are exact mCIDE ``admission_type_category`` members; they map to arrival
+      locations as ``ed``->ed, ``elective``->procedural, ``direct``/``facility``->ward,
+      ``other``->ed, and ``osh``->**icu** (an outside-hospital transfer arrives straight
+      at the higher-level ICU — the modelled OSH->ICU referral pathway). Because this
+      route supersedes them, the full-hospital adt block no longer sets
+      ``arrival_location_marginal`` / ``direct_icu_frac`` and the hospitalization block
+      no longer overrides ``admission_type_category_marginal`` (those code paths remain
+      for other callers). Probe at n=6000, seed 5: admission-type ed 0.76 / direct 0.10
+      / elective 0.10 / osh 0.03; osh->icu coupling ~100%; total ICU ~0.16, of which
+      transfer ~0.12 and direct-arrive-icu ~0.04.
     * **The peak-acuity distribution is shaped ward-dominant.** Escalation to the
       invasive-ventilation tier (levels 3-5) *and* to the stepdown tier (level 2) is
       tempered so peak tracks start, and the start law is set to a full-population
@@ -545,9 +533,12 @@ def recalibrate_to_full_hospital(
       start mass at the ICU tiers and ``stepdown_target`` at stepdown, the rest at
       ward/ED. These are **start-law** fractions; residual (tempered) escalation and
       the terminal-deterioration climb of decedents lift the realized peak fractions
-      somewhat, so the defaults (0.12 / 0.05) sit below the measured real peak
-      fractions (0.156 / 0.08) and land the generated cohort on them (probe: ICU
-      0.164, stepdown 0.074 at n=4000).
+      somewhat. ``icu_target`` (default 0.08, a **start-law** fraction that realizes as
+      ~0.13 reaches-ICU after escalation/terminal climb) is deliberately below the
+      ~0.156 real ICU fraction because the coupled ``osh`` route now arrives ~3% of
+      stays straight at the ICU **independent of spine escalation** — the spine-driven
+      ICU transfers (~0.12) plus the OSH direct-ICU arrivals (~0.03, not
+      double-counted) sum to the measured total ICU fraction (~0.15-0.16).
     * **Sojourns are scaled to the short full-population LOS** — most stays are brief
       ward stays, so the multipliers are far smaller than the ICU mode's; the
       log-normal tails are tightened by ``sojourn_shape_scale`` as there.
@@ -616,28 +607,20 @@ def recalibrate_to_full_hospital(
         "neuro_flag": 0.2,
     }
 
-    # Enable the ed/ward/stepdown/icu location mix — the defining difference from the
-    # ICU mode, which sets this False (every stay an ICU stay). The arrival marginal
-    # and direct-ICU fraction make the admission (first) location a realistic ED/OR-
-    # dominant spread with a small direct-ICU path, replacing the 100%-ED front door.
-    tables["adt"] = {
-        "params": {
-            "enrich_locations": True,
-            "arrival_location_marginal": dict(
-                arrival_location_marginal or _FULL_HOSPITAL_ARRIVAL_MARGINAL
-            ),
-            "direct_icu_frac": direct_icu_frac,
-        }
-    }
-    # Retarget the hospitalization admission-type mix off the base pack's ED-heavy
-    # fitted marginal to the full-population mix (direct ~0.20, ED/elective dominant).
-    hosp = dict(tables.get("hospitalization", {}))
-    hosp_params = dict(hosp.get("params", {}))
-    hosp_params["admission_type_category_marginal"] = dict(
-        admission_type_category_marginal or _FULL_HOSPITAL_ADMISSION_TYPE_MARGINAL
+    # Coupled admission route (KTD-6): one per-stay draw on the spine that both the
+    # hospitalization generator (as admission_type_category) and the adt generator (as
+    # the mapped arrival location) read, so admission type and front door agree per
+    # stay. This supersedes the previous independent admission_type/arrival marginals.
+    spine["admission_route_marginal"] = dict(
+        admission_route_marginal or _FULL_HOSPITAL_ADMISSION_ROUTE_MARGINAL
     )
-    hosp["params"] = hosp_params
-    tables["hospitalization"] = hosp
+
+    # Enable the ed/ward/stepdown/icu location mix — the defining difference from the
+    # ICU mode, which sets this False (every stay an ICU stay). The admission (first)
+    # location is now set by the coupled route (see spine.admission_route -> adt), so
+    # no arrival_location_marginal / direct_icu_frac is needed: an osh route arrives
+    # straight at icu, elective at procedural, direct/facility at ward, ed/other at ed.
+    tables["adt"] = {"params": {"enrich_locations": True}}
     # Non-invasive support stays a low-prevalence per-stay property; the gated path
     # also keeps IMV to the intubation tier (level >= 3) so the ward/stepdown floor
     # never produces spurious ventilation.

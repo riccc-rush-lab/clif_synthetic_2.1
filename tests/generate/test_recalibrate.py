@@ -205,6 +205,15 @@ def test_generator_paths_enabled() -> None:
     assert out["spine"]["params"]["terminal_deterioration_hours"] == 24.0
 
 
+def test_network_median_sets_no_admission_route_marginal() -> None:
+    # Backward compatibility (R22): the ICU (network-median) transform must NOT set an
+    # admission_route_marginal, so the spine never draws the coupled route and the ICU
+    # master / demo output stays byte-for-byte identical (the route draw is skipped and
+    # the rng order is unchanged). Only the full-hospital transform enables the route.
+    out = recalibrate_to_network_median(_pack()).tables["spine"]["params"]
+    assert "admission_route_marginal" not in out
+
+
 # --- full-hospital transform ----------------------------------------------- #
 
 
@@ -224,43 +233,34 @@ def test_full_hospital_enables_location_enrichment() -> None:
     assert out["adt"]["params"]["enrich_locations"] is True
 
 
-def test_full_hospital_sets_arrival_marginal_and_direct_icu_frac() -> None:
-    # The arrival (first-location) mix and direct-ICU path replace the 100%-ED door.
+def test_full_hospital_sets_coupled_admission_route_marginal() -> None:
+    # The single coupled route on the spine drives BOTH the admission type and the
+    # arrival location (KTD-6); the adt block no longer carries a separate arrival
+    # marginal / direct-ICU fraction (the route supersedes them).
     from clifforge.reference import categories
 
     out = recalibrate_to_full_hospital(_pack()).tables
-    params = out["adt"]["params"]
-    marginal = params["arrival_location_marginal"]
-    assert marginal["ed"] > max(marginal[k] for k in marginal if k != "ed")  # ED-dominant
-    assert set(marginal) <= set(categories("adt", "location_category"))  # exact mCIDE
-    assert 0.0 < params["direct_icu_frac"] < 1.0
-    # Overrides propagate.
+    route = out["spine"]["params"]["admission_route_marginal"]
+    # Route values ARE mCIDE admission_type_category members, ED-dominant with a small
+    # osh referral pathway.
+    assert set(route) <= set(categories("hospitalization", "admission_type_category"))
+    assert route["ed"] > max(route[k] for k in route if k != "ed")  # ED-dominant
+    assert 0.08 <= route["direct"] <= 0.12
+    assert 0.02 <= route["osh"] <= 0.04  # thin OSH->ICU referral share
+    # The full-hospital adt block is now just location enrichment — no arrival marginal
+    # or direct-ICU fraction (the coupled route decides the front door).
+    assert out["adt"]["params"] == {"enrich_locations": True}
+    # Override propagates onto the deep copy only.
     ov = recalibrate_to_full_hospital(
-        _pack(), arrival_location_marginal={"ed": 0.5, "ward": 0.5}, direct_icu_frac=0.25
-    ).tables["adt"]["params"]
-    assert ov["arrival_location_marginal"] == {"ed": 0.5, "ward": 0.5}
-    assert ov["direct_icu_frac"] == 0.25
+        _pack(), admission_route_marginal={"ed": 0.6, "osh": 0.4}
+    ).tables["spine"]["params"]["admission_route_marginal"]
+    assert ov == {"ed": 0.6, "osh": 0.4}
 
 
-def test_full_hospital_retargets_admission_type_marginal() -> None:
-    # The hospitalization admission-type mix is retargeted: direct ~0.20, ED/elective
-    # dominant, small osh/facility/other — all exact mCIDE members.
-    from clifforge.reference import categories
-
-    out = recalibrate_to_full_hospital(_pack()).tables
-    adm = out["hospitalization"]["params"]["admission_type_category_marginal"]
-    assert set(adm) <= set(categories("hospitalization", "admission_type_category"))
-    assert 0.18 <= adm["direct"] <= 0.22
-    assert adm["ed"] + adm["elective"] >= 0.70
-    # Override propagates.
-    ov = recalibrate_to_full_hospital(
-        _pack(), admission_type_category_marginal={"ed": 0.7, "direct": 0.3}
-    ).tables["hospitalization"]["params"]["admission_type_category_marginal"]
-    assert ov == {"ed": 0.7, "direct": 0.3}
-
-
-def test_full_hospital_does_not_mutate_hospitalization_block() -> None:
-    # R22: the admission-type override lands only on the deep copy.
+def test_full_hospital_does_not_override_hospitalization_admission_type_marginal() -> None:
+    # The coupled route supersedes the hospitalization admission-type marginal, so the
+    # full-hospital transform leaves any existing marginal on the hospitalization block
+    # untouched (R22: only the spine route marginal is added, on the deep copy).
     pack = ParamPack(
         manifest={},
         tables={
@@ -268,10 +268,14 @@ def test_full_hospital_does_not_mutate_hospitalization_block() -> None:
             "hospitalization": {"params": {"admission_type_category_marginal": {"ed": 1.0}}},
         },
     )
-    recalibrate_to_full_hospital(pack)
+    out = recalibrate_to_full_hospital(pack).tables
+    # input not mutated
     assert pack.tables["hospitalization"]["params"]["admission_type_category_marginal"] == {
         "ed": 1.0
     }
+    # the transform did not rewrite the copy's marginal (the route drives admission type)
+    assert out["hospitalization"]["params"]["admission_type_category_marginal"] == {"ed": 1.0}
+    assert "admission_route_marginal" in out["spine"]["params"]
 
 
 def test_full_hospital_start_law_is_ward_dominant() -> None:
@@ -284,7 +288,10 @@ def test_full_hospital_start_law_is_ward_dominant() -> None:
     icu = sum(start.get(k, 0.0) for k in ("3", "4", "5"))
     assert ward > 0.7  # ward/ED dominant
     assert start["2"] < 0.1 < ward  # only a thin stepdown slice
-    assert 0.08 < icu < 0.2  # a minority reach an ICU tier
+    # A minority reach an ICU tier. The default start-law icu_target (0.08) is now set
+    # below the ~0.156 real ICU fraction because the coupled osh route arrives ~3% of
+    # stays at icu independent of spine escalation (see recalibrate docstring).
+    assert 0.05 < icu < 0.2
 
 
 def test_full_hospital_tempers_stepdown_and_high_escalation() -> None:

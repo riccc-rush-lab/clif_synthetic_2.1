@@ -106,14 +106,22 @@ def sample_hospitalization(
     """Sample one hospitalization from its spine and the pack (R8, R12, AE4, R22).
 
     Length of stay is ``spine.n_intervals`` on the fitted grid; disposition is
-    driven by ``spine.outcome`` for AE4 consistency. Draws ``admission_type`` from
-    ``rng`` first, then (survivors only) ``discharge_category``.
+    driven by ``spine.outcome`` for AE4 consistency. When the spine carries a
+    coupled ``admission_route`` (a per-stay pathway on the latent spine, KTD-6)
+    it *is* the ``admission_type_category`` — the route values are mCIDE
+    ``admission_type_category`` members — so admission type and the ADT arrival
+    location agree per stay; the ``rng`` is then not drawn for it. Otherwise the
+    admission type is drawn from ``rng`` off the pack marginal (ICU master / demo,
+    byte-for-byte unchanged). Survivors then draw ``discharge_category``.
     """
     params = _hospitalization_params(pack)
     los_hours = spine.n_intervals * grid_step_hours(pack)
     discharge_dttm = admit_dttm + timedelta(hours=los_hours)
 
-    admission_type = categorical(params["admission_type_category_marginal"], rng)
+    if spine.admission_route:
+        admission_type = spine.admission_route
+    else:
+        admission_type = categorical(params["admission_type_category_marginal"], rng)
 
     if spine.outcome == "expired":
         discharge_category = DEATH_DISCHARGE_CATEGORY

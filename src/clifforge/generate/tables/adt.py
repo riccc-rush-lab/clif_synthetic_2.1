@@ -34,6 +34,14 @@ transfer into ICU later, so transfer-to-ICU is ``reaches_icu * (1 - direct_icu_f
 Intervals after the first keep the spine-driven mapping. When no
 ``arrival_location_marginal`` is set (the ICU master and demo packs) the ``rng`` is
 unused and the admission location is unchanged, preserving byte-for-byte output.
+
+**Coupled admission route.** A spine may carry an ``admission_route`` (drawn once per
+stay from the pack's ``admission_route_marginal``, KTD-6) that *supersedes* the
+arrival marginal at the admission interval: the route maps deterministically to a
+location (see :data:`_ROUTE_TO_ARRIVAL`) so the ADT front door and the hospitalization
+``admission_type_category`` agree per stay, and an outside-hospital transfer (``osh``)
+arrives straight at the higher-level ``icu``. Precedence at idx 0 is therefore
+``admission_route`` (if set) > ``arrival_location_marginal`` (if set) > default.
 """
 
 from __future__ import annotations
@@ -62,6 +70,23 @@ _HOSPITAL_TYPE = "academic"
 _ICU_LOCATION_TYPE = "medical_icu"
 
 _DEFAULT_ADMIT = datetime(2020, 1, 1, tzinfo=UTC)
+
+#: Coupled admission-route -> admission (first) ADT location. When the spine carries
+#: an ``admission_route`` (drawn once per stay from the pack's ``admission_route_marginal``,
+#: KTD-6) it maps deterministically to the arrival location, so the hospitalization's
+#: ``admission_type_category`` and this ADT front door agree per stay. ``osh`` (an
+#: outside-hospital transfer) arrives straight at the higher-level ``icu``; ``elective``
+#: (a scheduled OR / post-op admit) at ``procedural``; ``direct`` / ``facility`` at the
+#: ``ward``; ``ed`` / ``other`` through the emergency department. Values are exact mCIDE
+#: ``location_category`` members.
+_ROUTE_TO_ARRIVAL: dict[str, str] = {
+    "ed": "ed",
+    "elective": "procedural",
+    "direct": "ward",
+    "osh": "icu",
+    "facility": "ward",
+    "other": "ed",
+}
 
 
 @dataclass(frozen=True)
@@ -126,14 +151,25 @@ def _arrival_category(
 ) -> str | None:
     """Draw the admission-interval location, or ``None`` to keep the default mapping.
 
-    When the pack's adt params carry an ``arrival_location_marginal`` the stay's
-    front door is sampled from the passed ``rng`` (R22): a spine that reaches
-    invasive ventilation is a direct ICU admit (``icu``) with probability
-    ``direct_icu_frac``, otherwise the arrival is drawn from the marginal (an
-    ED/OR-dominant mix with ward / stepdown variety). Absent the marginal this
-    returns ``None`` and the caller falls back to the unchanged spine mapping, so
-    the ``rng`` is never drawn and output stays byte-for-byte identical.
+    Precedence at the admission interval (idx 0):
+
+    1. **Coupled admission route** — when the spine carries an ``admission_route``
+       (drawn per stay from the pack's ``admission_route_marginal``, KTD-6) it maps
+       deterministically to the arrival location via :data:`_ROUTE_TO_ARRIVAL`, so
+       the arrival and the hospitalization ``admission_type_category`` agree per stay
+       (``osh`` arrives straight at ``icu``). The ``rng`` is **not** drawn — the
+       route already fixed the front door.
+    2. **``arrival_location_marginal``** — when there is no route but the pack carries
+       this marginal, the front door is sampled from the passed ``rng`` (R22): a spine
+       that reaches invasive ventilation is a direct ICU admit (``icu``) with
+       probability ``direct_icu_frac``, otherwise the arrival is drawn from the
+       marginal (an ED/OR-dominant mix with ward / stepdown variety).
+    3. **Default** — absent both, returns ``None`` and the caller keeps the unchanged
+       spine mapping, so the ``rng`` is never drawn and output stays byte-for-byte
+       identical (ICU master / demo).
     """
+    if spine.admission_route:
+        return _ROUTE_TO_ARRIVAL.get(spine.admission_route, "ed")
     marginal = params.get("arrival_location_marginal")
     if not isinstance(marginal, dict) or not marginal:
         return None

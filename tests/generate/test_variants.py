@@ -51,10 +51,17 @@ def test_full_hospital_mode_enables_location_enrichment_and_arrival_flow() -> No
     pack = spec_to_pack(spec, demo_pack())
     adt_params = pack.tables["adt"]["params"]
     assert adt_params["enrich_locations"] is True
-    assert adt_params["arrival_location_marginal"]  # ED/OR-dominant arrival mix present
-    # The ICU-mode default (no enrichment) is the contrast.
+    # The admission (first) location is now driven by the coupled admission route on the
+    # spine (KTD-6), so the adt block carries only enrichment — no separate arrival
+    # marginal. The route drives both admission type and arrival, ED-dominant with an
+    # osh->icu referral pathway.
+    route = pack.tables["spine"]["params"]["admission_route_marginal"]
+    assert route["ed"] > max(route[k] for k in route if k != "ed")  # ED-dominant
+    assert "osh" in route  # outside-hospital referral pathway present
+    # The ICU-mode default (no enrichment, no coupled route) is the contrast.
     icu_pack = spec_to_pack(VariantSpec(mode="icu"), demo_pack())
     assert icu_pack.tables["adt"]["params"].get("enrich_locations") is False
+    assert "admission_route_marginal" not in icu_pack.tables["spine"]["params"]
 
 
 def test_full_spec_overrides_are_parsed(tmp_path: Path) -> None:
