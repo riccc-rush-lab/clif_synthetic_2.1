@@ -315,6 +315,52 @@ def test_lab_presence_conditioned_on_icu_cohort() -> None:
     assert full["lab_correlation"] == cond["lab_correlation"]
 
 
+def _panel_presence_frame() -> pl.DataFrame:
+    # wbc + hemoglobin are a panel (co-measured in the same 10 stays); lactate is
+    # measured only in the *other* 10 stays. Presence of wbc and hemoglobin must be
+    # strongly positively correlated, and each anti-correlated with lactate.
+    rows = []
+    for h in range(20):
+        panel = h < 10
+        for interval in range(3):
+            if panel:
+                for cat, val in (("wbc", 8.0), ("hemoglobin", 12.0)):
+                    rows.append(
+                        {
+                            "hospitalization_id": f"H{h}",
+                            "interval_idx": interval,
+                            "lab_category": cat,
+                            "value": val,
+                        }
+                    )
+            else:
+                rows.append(
+                    {
+                        "hospitalization_id": f"H{h}",
+                        "interval_idx": interval,
+                        "lab_category": "lactate",
+                        "value": 2.0,
+                    }
+                )
+    return pl.DataFrame(rows)
+
+
+def test_lab_presence_correlation_captures_panel_co_occurrence() -> None:
+    params, _ = estimators.fit_lab_copula(_panel_presence_frame(), n_hospitalizations=20)
+    order = params["lab_order"]
+    corr = np.asarray(params["lab_presence_correlation"], dtype=float)
+    idx = {lab: i for i, lab in enumerate(order)}
+    # Symmetric, PD, unit-diagonal (usable as a copula factor).
+    assert corr.shape[0] == corr.shape[1] == len(order)
+    assert np.allclose(corr, corr.T)
+    assert np.all(np.linalg.eigvalsh(corr) > 0)
+    assert np.allclose(np.diag(corr), 1.0)
+    # Co-measured panel members are strongly positively correlated; the disjoint
+    # lab is negatively correlated with them.
+    assert corr[idx["wbc"], idx["hemoglobin"]] > 0.9
+    assert corr[idx["wbc"], idx["lactate"]] < 0.0
+
+
 def test_nearest_pd_repairs_indefinite_matrix() -> None:
     indefinite = np.array([[1.0, 0.9, -0.9], [0.9, 1.0, 0.9], [-0.9, 0.9, 1.0]])
     repaired = estimators.nearest_positive_definite_correlation(indefinite)

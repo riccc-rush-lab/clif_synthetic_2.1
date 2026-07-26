@@ -86,6 +86,31 @@ _GRID_DTTM = {
 #: ``generate._common.ICU_MIN_SUPPORT_LEVEL``; kept local to preserve fit→generate layering).
 _ICU_MIN_SUPPORT_LEVEL = 2
 
+#: ADT ``location_category`` value marking an ICU location (mCIDE).
+_ICU_LOCATION_CATEGORY = "icu"
+
+
+def _icu_cohort(adt: pl.LazyFrame | None) -> set[str]:
+    """Clinically-defined ICU cohort: hospitalizations with an ICU ADT location.
+
+    This is the population the synthetic dataset represents, so it is the correct
+    denominator for per-stay lab presence. Returns an empty set when ADT or its
+    ``location_category`` column is unavailable, signalling the caller to fall
+    back to the latent support-level cohort.
+    """
+    if adt is None:
+        return set()
+    if "location_category" not in set(adt.collect_schema().names()):
+        return set()
+    return set(
+        adt.filter(pl.col("location_category") == _ICU_LOCATION_CATEGORY)
+        .select("hospitalization_id")
+        .unique()
+        .collect()
+        .to_series()
+        .to_list()
+    )
+
 
 # --------------------------------------------------------------------------- #
 # Real-data discovery (KTD-1: confined to this module)
@@ -386,16 +411,22 @@ def run_fit(
             config=config,
         )
         n_hosp = len(train_hosp_set)
-        # ICU-exposed cohort: any interval at or above the ICU support threshold.
-        # Conditioning lab presence on this population matches the ICU-focused
-        # generator (mirrors generate ICU_MIN_SUPPORT_LEVEL = 2).
-        icu_hosp = set(
-            timeline.filter(pl.col("support_level") >= _ICU_MIN_SUPPORT_LEVEL)
-            .select("hospitalization_id")
-            .unique()
-            .to_series()
-            .to_list()
-        )
+        # ICU-exposed cohort for conditioning lab presence: the population the
+        # synthetic dataset represents (every generated stay is an ICU encounter).
+        # Prefer the clinically-defined ICU cohort from ADT (location_category
+        # == "icu"); the latent support-level cohort is a narrower, sicker subset
+        # that inflates per-stay presence for intermittent labs (lactate, arterial
+        # blood gases) several points above the true ICU rate. Fall back to the
+        # support-level timeline only when ADT location data is unavailable.
+        icu_hosp = _icu_cohort(train_tables.get("adt"))
+        if not icu_hosp:
+            icu_hosp = set(
+                timeline.filter(pl.col("support_level") >= _ICU_MIN_SUPPORT_LEVEL)
+                .select("hospitalization_id")
+                .unique()
+                .to_series()
+                .to_list()
+            )
         lab_params, lab_rec = estimators.fit_lab_copula(
             labs_grid, n_hospitalizations=n_hosp, icu_hospitalizations=icu_hosp
         )

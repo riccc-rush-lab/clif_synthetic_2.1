@@ -79,6 +79,41 @@ def _spearman(x: list[float], y: list[float]) -> float:
     return float(np.corrcoef(xr, yr)[0, 1])
 
 
+def _presence_pack(presence_correlation: list[list[float]] | None) -> ParamPack:
+    pack = _pack(presence={"creatinine": 0.5, "bun": 0.5, "sodium": 0.5})
+    if presence_correlation is not None:
+        pack.tables["labs"]["params"]["lab_presence_correlation"] = presence_correlation
+    return pack
+
+
+def _present_flags(pack: ParamPack, n_stays: int) -> dict[str, list[int]]:
+    """Per-stay present/absent (1/0) for each lab across many independent stays."""
+    flags: dict[str, list[int]] = {lab: [] for lab in _ORDER}
+    for s in range(n_stays):
+        obs = sample_labs(_spine([3] * 6, hid=f"H{s}"), pack, np.random.default_rng(s))
+        present = {o.lab_category for o in obs}
+        for lab in _ORDER:
+            flags[lab].append(1 if lab in present else 0)
+    return flags
+
+
+def test_presence_copula_co_occurs_paneled_labs() -> None:
+    # creatinine + bun are a "panel" (presence correlation ~1); sodium independent.
+    corr = [[1.0, 0.99, 0.0], [0.99, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    paneled = _present_flags(_presence_pack(corr), 400)
+    independent = _present_flags(_presence_pack(None), 400)
+
+    def co_occur(flags: dict[str, list[int]], a: str, b: str) -> float:
+        return float(np.mean([x == y for x, y in zip(flags[a], flags[b], strict=True)]))
+
+    # With the copula, creatinine and bun are present-together in nearly every stay;
+    # independent Bernoulli draws (no correlation matrix) agree only ~half the time.
+    assert co_occur(paneled, "creatinine", "bun") > 0.9
+    assert co_occur(independent, "creatinine", "bun") < 0.75
+    # Each lab's marginal presence is preserved by the copula (~0.5, the fitted rate).
+    assert 0.4 < float(np.mean(paneled["creatinine"])) < 0.6
+
+
 def test_is_deterministic_under_fixed_seed() -> None:
     pack = _pack()
     sp = _spine([3] * 10)
