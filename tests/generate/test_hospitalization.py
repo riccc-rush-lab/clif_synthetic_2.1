@@ -52,7 +52,7 @@ def _pack(grid_step_hours: float = 1.0) -> ParamPack:
     )
 
 
-def _spine(hid: str, n: int, outcome: str, level: int = 1) -> SpineFrame:
+def _spine(hid: str, n: int, outcome: str, level: int = 1, route: str = "") -> SpineFrame:
     return SpineFrame(
         hospitalization_id=hid,
         support_level=[level] * n,
@@ -61,6 +61,7 @@ def _spine(hid: str, n: int, outcome: str, level: int = 1) -> SpineFrame:
         renal_flag=[False] * n,
         neuro_flag=[False] * n,
         outcome=outcome,
+        admission_route=route,
     )
 
 
@@ -124,6 +125,36 @@ def test_admission_type_marginal_matches_pack() -> None:
     ]
     for cat, prob in _ADMIT_TYPE.items():
         assert abs(cats.count(cat) / len(cats) - prob) < 0.03
+
+
+def test_admission_route_supersedes_marginal_and_skips_the_draw() -> None:
+    # When the spine carries a coupled admission_route it IS the admission_type
+    # (a direct mCIDE assignment), overriding the pack marginal, and the rng is not
+    # drawn for it — proven by two different generators giving the same admission_type.
+    pack = _pack()
+    sp = _spine("H0", 6, "alive", route="osh")
+    a = sample_hospitalization(sp, pack, np.random.default_rng(0))
+    b = sample_hospitalization(sp, pack, np.random.default_rng(9999))
+    assert a.admission_type_category == "osh" and a.admission_type_name == "osh"
+    assert a.admission_type_category == b.admission_type_category  # rng not drawn for it
+    # every route value round-trips as the admission type
+    for route in ("ed", "elective", "direct", "osh", "facility", "other"):
+        rec = sample_hospitalization(
+            _spine("H", 4, "alive", route=route), pack, np.random.default_rng(0)
+        )
+        assert rec.admission_type_category == route
+        assert route in set(categories("hospitalization", "admission_type_category"))
+
+
+def test_empty_route_falls_back_to_marginal_draw() -> None:
+    # No route -> the pack marginal is drawn as before (ICU master / demo, unchanged).
+    pack = _pack()
+    rng = np.random.default_rng(17)
+    cats = [
+        sample_hospitalization(_spine("H", 4, "alive"), pack, rng).admission_type_category
+        for _ in range(2000)
+    ]
+    assert set(cats) <= set(_ADMIT_TYPE)  # drawn from the marginal, not a fixed route
 
 
 def test_zero_orphans_against_patient_cohort() -> None:

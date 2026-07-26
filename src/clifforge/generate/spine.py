@@ -39,6 +39,7 @@ from clifforge.fit.estimators import DISCHARGE_STATE
 from clifforge.fit.param_pack import ParamPack
 from clifforge.generate import semimarkov
 from clifforge.generate._common import ICU_MIN_SUPPORT_LEVEL
+from clifforge.generate.sampling import categorical
 from clifforge.generate.semimarkov import SojournSampler
 
 __all__ = [
@@ -58,6 +59,14 @@ class SpineFrame:
 
     ``support_level`` and the four flag lists are all length ``n_intervals`` and
     aligned interval-by-interval. ``outcome`` is ``"expired"`` or ``"alive"``.
+
+    ``admission_route`` is a per-stay scalar (like ``outcome``): a coupled
+    admission pathway drawn once per stay when the pack carries an
+    ``admission_route_marginal``, otherwise ``""``. It is the sole cross-table
+    channel (KTD-6) that keeps the hospitalization ``admission_type_category`` and
+    the ADT arrival location in agreement per stay: both generators read it. Its
+    values are mCIDE ``admission_type_category`` members (``ed``, ``elective``,
+    ``direct``, ``osh``, ``facility``, ``other``).
     """
 
     hospitalization_id: str
@@ -67,6 +76,7 @@ class SpineFrame:
     renal_flag: list[bool]
     neuro_flag: list[bool]
     outcome: str
+    admission_route: str = ""
 
     @property
     def n_intervals(self) -> int:
@@ -89,6 +99,7 @@ class SpineFrame:
                 "renal_flag": self.renal_flag,
                 "neuro_flag": self.neuro_flag,
                 "outcome": [self.outcome] * n,
+                "admission_route": [self.admission_route] * n,
             }
         )
 
@@ -189,7 +200,12 @@ def sample_spine(
     then each run's organ-failure flags (Bernoulli at the run's per-level
     prevalence, held constant across the run for within-run coherence), then the
     terminal outcome (Bernoulli at the mortality rate for the trajectory's peak
-    acuity). Same seed in -> identical :class:`SpineFrame` out.
+    acuity), and — **last, and only when the pack carries an
+    ``admission_route_marginal``** — the coupled admission route. Placing the
+    route draw last keeps every earlier draw (trajectory/flags/outcome) at its
+    original position, so a pack without the marginal never draws it and its
+    output is byte-for-byte unchanged (R22). Same seed in -> identical
+    :class:`SpineFrame` out.
     """
     params = _spine_params(pack)
     state_model = params["state_model"]
@@ -254,6 +270,12 @@ def sample_spine(
             mix=params.get("terminal_archetype_mix"),
         )
 
+    # Coupled admission route (drawn LAST so it never shifts the earlier draws).
+    # Only drawn when the pack carries the marginal; otherwise the rng is untouched
+    # and the route stays "" (backward compatible, R22).
+    route_marginal = params.get("admission_route_marginal")
+    admission_route = categorical(route_marginal, rng) if route_marginal else ""
+
     return SpineFrame(
         hospitalization_id=hospitalization_id,
         support_level=support_level,
@@ -262,6 +284,7 @@ def sample_spine(
         renal_flag=flags["renal_flag"],
         neuro_flag=flags["neuro_flag"],
         outcome=outcome,
+        admission_route=admission_route,
     )
 
 
@@ -366,6 +389,7 @@ def truth_frame(spines: list[SpineFrame]) -> pl.DataFrame:
                 "renal_flag": pl.Boolean,
                 "neuro_flag": pl.Boolean,
                 "outcome": pl.String,
+                "admission_route": pl.String,
             }
         )
     return pl.concat([s.to_polars() for s in spines], how="vertical")

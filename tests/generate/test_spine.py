@@ -187,8 +187,54 @@ def test_truth_frame_stacks_spines() -> None:
         "renal_flag",
         "neuro_flag",
         "outcome",
+        "admission_route",
     }
     assert truth_frame([]).height == 0
+
+
+def test_admission_route_empty_without_marginal_and_rng_untouched() -> None:
+    # Backward compatibility (R22): a pack with no admission_route_marginal must not
+    # draw the route (route stays "") and must leave the rng draw order — and thus the
+    # rest of the spine — byte-for-byte identical to a run where the route code did not
+    # exist. We prove the rng is untouched by checking that adding the marginal (drawn
+    # LAST) does not alter any earlier array.
+    pack = _spine_pack()
+    plain = sample_spine(pack, np.random.default_rng(42))
+    assert plain.admission_route == ""
+    assert plain.to_polars()["admission_route"].to_list() == [""] * plain.n_intervals
+
+    routed_pack = _spine_pack()
+    routed_pack.tables["spine"]["params"]["admission_route_marginal"] = {
+        "ed": 0.7,
+        "direct": 0.2,
+        "osh": 0.1,
+    }
+    routed = sample_spine(routed_pack, np.random.default_rng(42))
+    # The route is drawn LAST, so every earlier draw is unchanged: trajectory, flags,
+    # and outcome are identical to the no-marginal run.
+    assert routed.support_level == plain.support_level
+    assert routed.resp_flag == plain.resp_flag
+    assert routed.cv_flag == plain.cv_flag
+    assert routed.outcome == plain.outcome
+    # ...and the route itself is now a drawn mCIDE admission_type_category member.
+    assert routed.admission_route in {"ed", "direct", "osh"}
+
+
+def test_admission_route_marginal_matches_pack() -> None:
+    # The drawn route follows admission_route_marginal within sampling error.
+    pack = _spine_pack()
+    pack.tables["spine"]["params"]["admission_route_marginal"] = {
+        "ed": 0.76,
+        "elective": 0.10,
+        "direct": 0.10,
+        "osh": 0.03,
+        "facility": 0.005,
+        "other": 0.005,
+    }
+    rng = np.random.default_rng(11)
+    routes = [sample_spine(pack, rng).admission_route for _ in range(4000)]
+    assert abs(routes.count("ed") / len(routes) - 0.76) < 0.03
+    assert abs(routes.count("osh") / len(routes) - 0.03) < 0.02
 
 
 def test_missing_spine_block_raises() -> None:

@@ -35,7 +35,7 @@ def _pack(grid_step_hours: float = _GRID) -> ParamPack:
     )
 
 
-def _spine(levels: list[int], hid: str = "H0") -> SpineFrame:
+def _spine(levels: list[int], hid: str = "H0", route: str = "") -> SpineFrame:
     n = len(levels)
     return SpineFrame(
         hospitalization_id=hid,
@@ -45,6 +45,7 @@ def _spine(levels: list[int], hid: str = "H0") -> SpineFrame:
         renal_flag=[False] * n,
         neuro_flag=[False] * n,
         outcome="alive",
+        admission_route=route,
     )
 
 
@@ -257,3 +258,56 @@ def test_arrival_marginal_is_deterministic_under_fixed_seed() -> None:
     a = sample_adt(sp, pack, np.random.default_rng(11))
     b = sample_adt(sp, pack, np.random.default_rng(11))
     assert a == b
+
+
+# --- coupled admission route (spine.admission_route -> arrival location) ----- #
+
+from clifforge.generate.tables.adt import _ROUTE_TO_ARRIVAL  # noqa: E402
+
+
+def test_admission_route_maps_to_arrival_location() -> None:
+    # Each coupled route maps deterministically to its arrival location at idx 0,
+    # so the ADT front door agrees with the hospitalization admission_type per stay.
+    pack = _pack()
+    pack.tables["adt"] = {"params": {"enrich_locations": True}}
+    ok = set(categories("adt", "location_category"))
+    for route, want in _ROUTE_TO_ARRIVAL.items():
+        sp = _spine([1, 1, 0], hid="Hr", route=route)  # ward-acuity stay
+        moves = sample_adt(sp, pack, np.random.default_rng(0))
+        assert moves[0].location_category == want
+        assert want in ok  # exact mCIDE
+
+
+def test_osh_route_arrives_straight_at_icu() -> None:
+    # The OSH->ICU referral pathway: an osh stay arrives at icu even when its spine
+    # never reaches an ICU acuity level (it is transferred to a higher level of care).
+    pack = _pack()
+    pack.tables["adt"] = {"params": {"enrich_locations": True}}
+    sp = _spine([1, 1, 1], hid="Hosh", route="osh")  # spine stays at ward acuity
+    moves = sample_adt(sp, pack, np.random.default_rng(0))
+    assert moves[0].location_category == "icu"
+    assert "Hosh" in icu_windows(moves)
+
+
+def test_admission_route_supersedes_arrival_marginal_and_skips_rng() -> None:
+    # Precedence at idx 0: admission_route > arrival_location_marginal. When the route
+    # is set the marginal is ignored and the rng is not drawn (two generators agree).
+    pack = _arrival_pack(direct_icu_frac=1.0)
+    sp = _spine([1, 3, 4, 1], hid="Hd", route="elective")  # reaches IMV, but route wins
+    a = sample_adt(sp, pack, np.random.default_rng(0))
+    b = sample_adt(sp, pack, np.random.default_rng(4242))
+    assert a[0].location_category == "procedural"  # elective -> procedural, not icu
+    assert a == b  # rng untouched when the route decides the front door
+
+
+def test_no_route_keeps_arrival_marginal_path() -> None:
+    # Backward compatible: with no admission_route the arrival_location_marginal path
+    # is used exactly as before (route is the default "").
+    pack = _arrival_pack(direct_icu_frac=0.0)
+    firsts = {
+        sample_adt(_spine([1, 1, 0], hid=f"H{s}"), pack, np.random.default_rng(s))[
+            0
+        ].location_category
+        for s in range(200)
+    }
+    assert firsts <= set(_ARRIVAL)  # drawn from the marginal, never a route mapping
