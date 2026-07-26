@@ -26,6 +26,7 @@ table hangs off ``hospitalization_id``.
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -178,13 +179,27 @@ def generate_dataset(
         raise ValueError("id_offset must be non-negative")
 
     child_seeds = np.random.SeedSequence(seed).spawn(n_patients)
+    tables, spines = _generate_frames(pack, child_seeds, id_offset)
+    return GeneratedDataset(tables=tables, truth=truth_frame(spines))
 
+
+def _generate_frames(
+    pack: ParamPack, child_seeds: list[np.random.SeedSequence], id_start: int
+) -> tuple[dict[str, pl.DataFrame], list[Any]]:
+    """Build (and gate) every table for the encounters in ``child_seeds``.
+
+    Encounter ``j`` uses ``child_seeds[j]`` and id ``id_start + j`` (``P{i}`` /
+    ``H{i}``). Because ``child_seeds`` comes from ``SeedSequence(seed).spawn`` and
+    child ``i`` is stable regardless of how the range is sliced, generating in one
+    call or in batches with matching ``id_start`` offsets yields identical output —
+    this is what lets :func:`generate_streaming` bound memory without changing a byte.
+    """
     patients, patient_deaths, hospitalizations, spines = [], [], [], []
     acc: dict[str, list[Any]] = {name: [] for name, *_ in _TABLE_REGISTRY}
 
-    for i, child in enumerate(child_seeds):
+    for j, child in enumerate(child_seeds):
         rng = np.random.default_rng(child)
-        pid, hid = f"P{id_offset + i}", f"H{id_offset + i}"
+        pid, hid = f"P{id_start + j}", f"H{id_start + j}"
         admit = _admit_dttm(rng)
 
         spine = sample_spine(pack, rng, hospitalization_id=hid)
@@ -203,7 +218,6 @@ def generate_dataset(
     patient_df = patient_frame(patients).with_columns(
         pl.Series("death_dttm", patient_deaths, dtype=UTC_DATETIME)
     )
-
     tables: dict[str, pl.DataFrame] = {
         "patient": patient_df,
         "hospitalization": hospitalization_frame(hospitalizations),
@@ -213,8 +227,7 @@ def generate_dataset(
 
     for name, frame in tables.items():
         gate.validate(frame, name, run_secondary=False)  # raises ConformanceError (R25)
-
-    return GeneratedDataset(tables=tables, truth=truth_frame(spines))
+    return tables, spines
 
 
 def write_dataset(
@@ -235,4 +248,56 @@ def write_dataset(
         path = out / "clif_truth.parquet"
         dataset.truth.write_parquet(path)
         written.append(path)
+    return written
+
+
+def generate_streaming(
+    pack: ParamPack,
+    out_dir: str | Path,
+    *,
+    n_patients: int,
+    seed: int = 42,
+    id_offset: int = 0,
+    chunk_size: int = 10_000,
+    write_truth: bool = True,
+) -> list[Path]:
+    """Generate a large cohort with bounded memory, writing directly to ``out_dir``.
+
+    Identical output to :func:`generate_dataset` + :func:`write_dataset` for the
+    same ``(seed, n_patients, id_offset)`` — every encounter keeps its stable child
+    seed and id regardless of ``chunk_size`` (see :func:`_generate_frames`) — but
+    only ``chunk_size`` encounters are ever held in memory at once. Each batch is
+    gated and written to a per-table part file; the parts are then streamed into one
+    ``clif_<table>.parquet`` each and removed. ``chunk_size`` is the memory dial:
+    smaller uses less RAM (and runs a touch slower). Returns the written paths.
+    """
+    if n_patients <= 0:
+        raise ValueError("n_patients must be a positive integer")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be a positive integer")
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    parts = out / "_parts"
+
+    child_seeds = np.random.SeedSequence(seed).spawn(n_patients)
+    table_names: list[str] = ["patient", "hospitalization", *[n for n, *_ in _TABLE_REGISTRY]]
+    if write_truth:
+        table_names.append("truth")
+
+    n_chunks = (n_patients + chunk_size - 1) // chunk_size
+    for c in range(n_chunks):
+        lo, hi = c * chunk_size, min((c + 1) * chunk_size, n_patients)
+        tables, spines = _generate_frames(pack, child_seeds[lo:hi], id_offset + lo)
+        batch = {**tables, "truth": truth_frame(spines)} if write_truth else tables
+        for name, frame in batch.items():
+            (parts / name).mkdir(parents=True, exist_ok=True)
+            frame.write_parquet(parts / name / f"part_{c:05d}.parquet")
+
+    written: list[Path] = []
+    for name in table_names:
+        part_files = sorted((parts / name).glob("part_*.parquet"))
+        dest = out / f"clif_{name}.parquet"
+        pl.scan_parquet(part_files).sink_parquet(dest)  # streamed concat, bounded memory
+        written.append(dest)
+    shutil.rmtree(parts, ignore_errors=True)
     return written

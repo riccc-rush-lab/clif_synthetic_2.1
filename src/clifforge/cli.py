@@ -14,6 +14,7 @@ their flags but do not yet run a pipeline.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Sequence
 
@@ -66,6 +67,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="base_pack",
         help="Base pack a --spec/--preset derives from (default: the shipped shareable base pack).",
     )
+    generate.add_argument(
+        "--chunk-size",
+        type=int,
+        default=10_000,
+        help="Encounters generated per in-memory batch (the RAM dial). Cohorts larger "
+        "than this stream to disk in batches so peak memory stays bounded; smaller "
+        "values use less RAM on modest machines (a touch slower). Output is identical "
+        "regardless of chunk size. Default 10000.",
+    )
+    generate.add_argument(
+        "--max-threads",
+        type=int,
+        default=None,
+        help="Cap CPU threads (the compute dial). Fewer threads use less CPU on shared "
+        "or low-core machines. Default: all available cores.",
+    )
 
     fit = sub.add_parser(
         "fit", help="Fit a parameter pack over real CLIF-MIMIC (one-time, requires real data)."
@@ -85,7 +102,11 @@ def _run_generate(args: argparse.Namespace) -> int:
     from clifforge.conformance.gate import ConformanceError
     from clifforge.demo import demo_pack
     from clifforge.fit.param_pack import ParamPack
-    from clifforge.generate.orchestrator import generate_dataset, write_dataset
+    from clifforge.generate.orchestrator import (
+        generate_dataset,
+        generate_streaming,
+        write_dataset,
+    )
     from clifforge.manifest import write_manifest
     from clifforge.variants import load_preset, load_spec, spec_to_pack
 
@@ -116,8 +137,16 @@ def _run_generate(args: argparse.Namespace) -> int:
                 return 1
             n_patients = args.n_patients
             seed = args.seed if args.seed is not None else 42
-        dataset = generate_dataset(pack, n_patients=n_patients, seed=seed)
-        written = write_dataset(dataset, args.out)
+        chunk_size = getattr(args, "chunk_size", 10_000)
+        if n_patients > chunk_size:
+            # Stream in bounded-memory batches (identical output, lower peak RAM).
+            written = generate_streaming(
+                pack, args.out, n_patients=n_patients, seed=seed, chunk_size=chunk_size
+            )
+        else:
+            written = write_dataset(
+                generate_dataset(pack, n_patients=n_patients, seed=seed), args.out
+            )
         manifest_spec = dataclasses.asdict(spec) if spec is not None else "master"
         write_manifest(args.out, spec=manifest_spec, seed=seed)
     except ConformanceError as exc:
@@ -151,6 +180,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "generate":
+        # Cap threads before polars/numpy are imported (they read the count at import).
+        max_threads = getattr(args, "max_threads", None)
+        if max_threads is not None:
+            if max_threads < 1:
+                print("clif-forge generate: --max-threads must be >= 1", file=sys.stderr)
+                return 1
+            os.environ["POLARS_MAX_THREADS"] = str(max_threads)
+            os.environ.setdefault("OMP_NUM_THREADS", str(max_threads))
         return _run_generate(args)
     if args.command == "fit":
         return _run_fit(args)

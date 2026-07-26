@@ -9,6 +9,8 @@ and the ``fit`` subcommand wiring.
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import polars as pl
 import pytest
@@ -16,7 +18,12 @@ import pytest
 from clifforge.cli import build_parser, main
 from clifforge.conformance.gate import ConformanceError
 from clifforge.fit.param_pack import ParamPack
-from clifforge.generate.orchestrator import GeneratedDataset, generate_dataset, write_dataset
+from clifforge.generate.orchestrator import (
+    GeneratedDataset,
+    generate_dataset,
+    generate_streaming,
+    write_dataset,
+)
 
 
 # --- U1 scaffold parser tests ------------------------------------------------ #
@@ -108,6 +115,59 @@ def test_id_offset_shifts_identifiers_for_chunked_generation(pack: ParamPack) ->
 def test_id_offset_rejects_negative(pack: ParamPack) -> None:
     with pytest.raises(ValueError, match="id_offset"):
         generate_dataset(pack, n_patients=3, seed=1, id_offset=-1)
+
+
+def test_streaming_matches_single_call_regardless_of_chunk_size(pack: ParamPack, tmp_path) -> None:
+    # The RAM dial must not change a byte: streaming in batches of any size must
+    # produce the same data as one in-memory generate_dataset + write_dataset.
+    single = tmp_path / "single"
+    write_dataset(generate_dataset(pack, n_patients=50, seed=9), single)
+    for chunk in (7, 20, 1000):  # smaller than, straddling, and larger than n
+        streamed = tmp_path / f"stream_{chunk}"
+        generate_streaming(pack, streamed, n_patients=50, seed=9, chunk_size=chunk)
+        for f in sorted(single.glob("clif_*.parquet")):
+            a = pl.read_parquet(f).sort(pl.all())
+            b = pl.read_parquet(streamed / f.name).sort(pl.all())
+            assert a.equals(b), f"{f.name} differs at chunk_size={chunk}"
+
+
+def test_streaming_leaves_no_parts_dir(pack: ParamPack, tmp_path) -> None:
+    out = tmp_path / "out"
+    generate_streaming(pack, out, n_patients=30, seed=1, chunk_size=8)
+    assert not (out / "_parts").exists()  # intermediate parts cleaned up
+    assert (out / "clif_hospitalization.parquet").exists()
+
+
+def test_streaming_rejects_bad_chunk_size(pack: ParamPack, tmp_path) -> None:
+    with pytest.raises(ValueError, match="chunk_size"):
+        generate_streaming(pack, tmp_path / "o", n_patients=5, seed=1, chunk_size=0)
+
+
+def test_cli_large_cohort_streams_and_caps_threads(tmp_path, monkeypatch) -> None:
+    # A cohort larger than --chunk-size routes through streaming; --max-threads is
+    # applied to the environment before the heavy imports.
+    monkeypatch.delenv("POLARS_MAX_THREADS", raising=False)
+    out = tmp_path / "ds"
+    rc = main(
+        [
+            "generate",
+            "--demo",
+            "--n-patients",
+            "40",
+            "--seed",
+            "2",
+            "--chunk-size",
+            "10",
+            "--max-threads",
+            "2",
+            "--out",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert os.environ["POLARS_MAX_THREADS"] == "2"
+    hosp = pl.read_parquet(out / "clif_hospitalization.parquet")
+    assert hosp["hospitalization_id"].n_unique() == 40  # all encounters written
 
 
 def test_seed_actually_changes_output(pack: ParamPack) -> None:
