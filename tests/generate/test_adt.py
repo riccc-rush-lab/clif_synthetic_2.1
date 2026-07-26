@@ -177,3 +177,83 @@ def test_enrich_locations_adds_ed_and_stepdown() -> None:
     assert "icu" in cats and "stepdown" in cats
     ok = set(categories("adt", "location_category"))
     assert all(c in ok for c in cats)  # still exact mCIDE
+
+
+# --- arrival-location marginal (full hospital front doors) ------------------ #
+
+_ARRIVAL = {"ed": 0.6, "ward": 0.22, "procedural": 0.12, "stepdown": 0.06}
+
+
+def _arrival_pack(*, direct_icu_frac: float = 0.0) -> ParamPack:
+    pack = _pack()
+    pack.tables["adt"] = {
+        "params": {
+            "enrich_locations": True,
+            "arrival_location_marginal": dict(_ARRIVAL),
+            "direct_icu_frac": direct_icu_frac,
+        }
+    }
+    return pack
+
+
+def test_arrival_marginal_produces_varied_first_locations() -> None:
+    # With an arrival marginal the admission location is drawn per stay, so the
+    # first-location distribution is a spread (not 100% ed) — and never breaks mCIDE.
+    pack = _arrival_pack()
+    ok = set(categories("adt", "location_category"))
+    firsts: list[str] = []
+    for s in range(400):
+        sp = _spine([1, 1, 0], hid=f"H{s}")  # ward-acuity stay, never reaches ICU
+        moves = sample_adt(sp, pack, np.random.default_rng(s))
+        firsts.append(moves[0].location_category)
+        assert all(m.location_category in ok for m in moves)
+    seen = set(firsts)
+    assert len(seen) >= 3  # ed/ward/procedural/stepdown all appear
+    assert seen <= set(_ARRIVAL)  # a non-reaching stay never lands the direct-icu path
+    ed_frac = firsts.count("ed") / len(firsts)
+    assert 0.4 < ed_frac < 0.75  # ED-dominant but not the sole front door
+
+
+def test_direct_icu_path_fires_for_reaches_icu_stays() -> None:
+    # direct_icu_frac=1.0: every stay that reaches invasive ventilation is a direct
+    # ICU admit (arrives at icu); a stay that never reaches it is not.
+    pack = _arrival_pack(direct_icu_frac=1.0)
+    reaches = _spine([1, 3, 4, 1], hid="Hr")  # peak >= IMV -> reaches ICU
+    stays = _spine([1, 2, 1], hid="Hs")  # peaks at stepdown, never invasive vent
+    assert sample_adt(reaches, pack, np.random.default_rng(0))[0].location_category == "icu"
+    first_stays = sample_adt(stays, pack, np.random.default_rng(0))[0].location_category
+    assert first_stays in _ARRIVAL and first_stays != "icu"
+
+
+def test_direct_icu_frac_zero_routes_reaches_icu_through_the_front_door() -> None:
+    # With no direct-ICU probability a reaches-ICU stay still arrives from the
+    # marginal and transfers into ICU later (icu appears, but not as the arrival).
+    pack = _arrival_pack(direct_icu_frac=0.0)
+    saw_transfer = False
+    for s in range(200):
+        sp = _spine([1, 3, 4, 1], hid=f"H{s}")  # reaches ICU
+        cats = [m.location_category for m in sample_adt(sp, pack, np.random.default_rng(s))]
+        assert cats[0] in _ARRIVAL and cats[0] != "icu"  # never a direct-ICU arrival
+        if "icu" in cats:
+            saw_transfer = True
+    assert saw_transfer  # the ICU is reached by transfer, not at admission
+
+
+def test_no_arrival_marginal_keeps_ed_admission_and_ignores_rng() -> None:
+    # Backward compatible: enrich on but no arrival marginal -> idx 0 is ed, and the
+    # rng is never drawn (two different generators give byte-identical output).
+    pack = _pack()
+    pack.tables["adt"] = {"params": {"enrich_locations": True}}
+    sp = _spine([1, 3, 3, 1], hid="Hb")
+    a = sample_adt(sp, pack, np.random.default_rng(0))
+    b = sample_adt(sp, pack, np.random.default_rng(12345))
+    assert a[0].location_category == "ed"
+    assert a == b  # rng unused when no arrival marginal is set
+
+
+def test_arrival_marginal_is_deterministic_under_fixed_seed() -> None:
+    pack = _arrival_pack(direct_icu_frac=0.4)
+    sp = _spine([1, 3, 4, 1], hid="Hd")
+    a = sample_adt(sp, pack, np.random.default_rng(11))
+    b = sample_adt(sp, pack, np.random.default_rng(11))
+    assert a == b
