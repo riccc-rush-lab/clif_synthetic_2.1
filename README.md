@@ -1,17 +1,23 @@
 # CLIFForge
 
-**A fully synthetic CLIF 2.1 ICU dataset generator.**
+**A fully synthetic CLIF 2.1 dataset generator.**
 
-CLIFForge produces ICU datasets in exact [CLIF 2.1](https://clif-consortium.github.io/website/)
+CLIFForge produces datasets in exact [CLIF 2.1](https://clif-consortium.github.io/website/)
 format that are **openly redistributable** and **clinically coherent** — built
 for the uses a credentialed real dataset cannot serve: public ETL smoke-testing,
-CI fixtures, agent development, teaching, and demos.
+CI fixtures, agent development, teaching, and demos. It generates two population
+shapes off the same engine:
+
+- an **ICU cohort** (every stay an ICU stay), and
+- a **whole-hospital population** (ward / ED / stepdown / ICU mix with realistic
+  patient flow — most patients never leave the ward, ~15% reach the ICU).
 
 It is an expansion of the consortium's `synthetic_clif`. Where `synthetic_clif`
 generates all 28 tables from hand-specified priors, CLIFForge's differentiator is
 **empirical fidelity**: it fits its distributions, couplings, and trajectories to
-aggregate ICU statistics so its output matches real CLIF closely enough to train
-models against.
+aggregate CLIF statistics so its output lands in the real statistical region —
+close enough to train models against — while being provably synthetic (no real
+record leaves the fit stage; no synthetic record traces back to a real patient).
 
 ## How it stays synthetic
 
@@ -23,10 +29,28 @@ models against.
 - **Offline generation.** The `generate` stage samples entirely from the
   parameter pack, with no real data present.
 - **Latent state spine.** Each synthetic hospitalization has one internal
-  trajectory of acuity, organ-failure flags, and outcome; every table reads from
-  that spine, never from its siblings — which is what keeps vasopressors paired
-  with hypotension, sedation with mechanical ventilation, prone with severe
-  hypoxemia.
+  trajectory of acuity, organ-failure flags, outcome, and admission route; every
+  table reads from that spine, never from its siblings — which is what keeps
+  vasopressors paired with hypotension, sedation with mechanical ventilation,
+  prone with severe hypoxemia, and a stay's admission type agreeing with where it
+  arrives.
+
+### What makes it look real
+
+- **Empirical value shapes.** Labs use an empirical inverse-CDF (quantile) marginal
+  driven through a Gaussian copula, so skewed and long-tailed distributions match
+  real (creatinine's kidney-disease tail, lactate's skew) — not just their means.
+- **Real missingness.** Per-stay lab presence is conditioned on the ICU cohort and
+  carries a fitted presence-correlation, so co-ordered panels (a metabolic panel, an
+  arterial blood gas) are measured together rather than independently.
+- **Real trajectories.** Length-of-stay distributions (median *and* tails), organ
+  support, and a deterioration-toward-death course (falling blood pressure, rising
+  creatinine) track the real cohort; the full-hospital population adds realistic
+  patient flow (ER/OR arrivals, ward→ICU and outside-hospital→ICU transfers).
+- **Privacy by construction.** Because generation samples from aggregate parameters
+  and never copies a record, no synthetic patient traces back to a real one
+  (verified by distance-to-closest-record, NN-distance ratio, and identifiability
+  in `clifforge.eval.privacy`).
 
 ## Usage
 
@@ -54,20 +78,31 @@ Output is one `clif_<table>.parquet` per table, plus `clif_truth.parquet` — th
 latent acuity spine behind each encounter, which makes the dataset usable as a
 benchmark with free ground-truth labels.
 
-## Demo dataset
+## Data available off the shelf
 
-[`demo_output/`](demo_output/) holds a committed **n=100, seed 42** dataset (19
-tables) so you can inspect real output without running anything or holding any
-credential. It ships with a generated
-[`REPORT.md`](demo_output/REPORT.md) and [`PROVENANCE.md`](demo_output/PROVENANCE.md).
+Everything below is **fully synthetic, CLIF 2.1-conformant, and committed to the
+repo** — clone and inspect, no generation and no credential required. All of it
+is regenerable byte-for-byte from the committed `base_pack/` + recipe.
+
+| Location | Size | What it is |
+|---|---|---|
+| [`sample_dataset/`](sample_dataset/) | ~10k stays, ~123 MB | **ICU cohort** sample — a representative draw of the network-median ICU master |
+| [`sample_full_hospital/`](sample_full_hospital/) | ~8k stays, ~28 MB | **Whole-hospital population** sample — ward/ED/stepdown/ICU with realistic patient flow |
+| [`demo_output/`](demo_output/) | n=100 | Tiny hand-specified demo (19 tables) with a generated `REPORT.md` + `PROVENANCE.md` |
+| [`base_pack/`](base_pack/) | ~84 KB | The **aggregate parameter pack** — no real data, seeds every dataset above and any you generate |
+
+Each dataset carries a `manifest.json` recording the recipe, seed, generator
+version, and per-table SHA-256 content hashes. Full-size masters (an 85k ICU
+cohort and a 365k whole-hospital population) are generated from `base_pack/` on
+demand — see below.
 
 ## Ideate your own CLIF-like dataset
 
-The shipped network-median dataset is the **master** — an off-the-shelf base
-everyone builds on. Anyone can *ideate and create* their own **derivative** —
-always distinct, always CLIF 2.1-conformant — from the committed **shareable base
-pack** ([`base_pack/`](base_pack/), aggregate-only, no real data, no credential),
-on three axes: **size**, **demographics**, and **illness rates**.
+The shipped datasets are **masters** — off-the-shelf bases everyone builds on.
+Anyone can *ideate and create* their own **derivative** — always distinct, always
+CLIF 2.1-conformant — from the committed **shareable base pack**
+([`base_pack/`](base_pack/), aggregate-only, no real data, no credential). No two
+recipes produce the same dataset, and every one is reproducible from its recipe.
 
 **Presets** — start from a shipped example variant, tweak, generate:
 
@@ -78,35 +113,65 @@ uv run clif-forge generate --preset high-acuity --n-patients 5000 --out ./my-dat
 Shipped presets: `high-acuity`, `older-cohort`, `sepsis-heavy` (see [`presets/`](presets/)).
 
 **Your own spec** — a variant is a small TOML recipe (every field defaults to the
-master; a minimal spec reproduces it):
+master; a minimal spec reproduces it). The `mode` picks the population shape:
 
 ```toml
 # my-variant.toml
-name = "my-icu"
+name = "my-cohort"
+mode = "icu"            # "icu" (default) or "full_hospital" (ward/ED/ICU mix)
 n = 20000
 
 [demographics]
-age_shift = 5.0        # relative to the base pack
+age_shift = 5.0        # years, relative to the base pack
 hispanic_frac = 0.45
+# race_target = { ... } # optional exact race mix
 
-[rates]
+[rates]                 # ICU-mode illness knobs (ignored in full_hospital mode)
 imv = 0.55             # reaches-invasive-ventilation target
 mortality_scale = 1.4  # multiplier on peak mortality
 vaso_frac = 0.45       # cardiovascular-failure (vasopressor) rate
-crrt_prob = 0.29
-prone_severe = 0.03
+crrt_prob = 0.29       # CRRT fraction among renal-failure stays
+prone_severe = 0.03    # prone positioning in severe hypoxemia
 ```
 
 ```bash
 uv run clif-forge generate --spec my-variant.toml --out ./my-dataset
+# or the full-hospital population:
+uv run clif-forge generate --spec my-variant.toml --n-patients 50000 --out ./my-hospital
 ```
 
-Every generated dataset writes a `manifest.json` recording the resolved spec, seed,
-generator version, and per-table content hashes — so a variant is reproducible from
-its recipe, and any two variants are provably distinct. The same knobs are available
-on the Python API (`clifforge.variants.spec_to_pack`,
-`clifforge.generate.recalibrate.recalibrate_to_network_median`), which operate on a
-deep copy and never mutate the base pack, so one base pack seeds unlimited variants.
+### What's tweakable
+
+| Axis | Spec field(s) | Notes |
+|---|---|---|
+| **Population shape** | `mode` | `icu` \| `full_hospital` |
+| **Size** | `n` / `--n-patients` | any count; chunked + collision-free |
+| **Demographics** | `age_shift`, `hispanic_frac`, `race_target` | relative to the base pack |
+| **Illness rates** (ICU) | `imv`, `mortality_scale`, `vaso_frac`, `crrt_prob`, `prone_severe` | organ-support and death targets |
+| **Seed** | `seed` / `--seed` | one seed → byte-identical output |
+
+For finer control the **Python API** exposes every recalibration knob directly —
+sojourn length + tail shape, non-invasive-support rates, lab panel cadence,
+terminal-deterioration window, and (full-hospital) the ICU/stepdown targets and
+the `admission_route_marginal` that drives the ER/OR/direct/OSH→ICU flow:
+
+```python
+from clifforge.fit.param_pack import ParamPack
+from clifforge.generate.recalibrate import (
+    recalibrate_to_network_median,   # ICU cohort
+    recalibrate_to_full_hospital,    # whole-hospital population
+)
+from clifforge.generate.orchestrator import generate_dataset
+
+base = ParamPack.load("base_pack")
+pack = recalibrate_to_full_hospital(base, icu_target=0.10, mortality_target=0.03)
+dataset = generate_dataset(pack, n_patients=50_000, seed=7)   # never mutates `base`
+```
+
+Every generated dataset writes a `manifest.json` (resolved recipe, seed, generator
+version, per-table content hashes), so a variant is reproducible from its recipe and
+any two variants are provably distinct. Recalibration is a pure function on a deep
+copy, so one base pack seeds unlimited variants.
 
 To re-author the base pack itself (or fit your own site's data), see
 `scripts/build_base_pack.py` and the `fit` subcommand.
@@ -144,21 +209,36 @@ configured fraction, which is indistinguishable from a correct split. For that
 reason `assert_holdout_disjoint` refuses to run until the caller passes
 `ids_share_fit_namespace=True`, affirming the one thing only they can verify.
 
+### Validate against your own real CLIF
+
+`scripts/validate_against_real.py` audits any generated dataset against a real
+staged CLIF reference and emits a JSON summary + printed table — cohort size,
+length-of-stay *distribution*, mortality, life support, per-stay missingness,
+lab-value fidelity, patient flow, and the deterioration-toward-death trajectory
+(no row-level data retained):
+
+```bash
+uv run python scripts/validate_against_real.py \
+    --synthetic ./my-dataset --real /path/to/real-clif --out validation.json
+```
+
 ### Validation report
 
 A [synthetic-vs-real validation report](https://claude.ai/code/artifact/d72f6a8d-b209-469d-82ad-b99d2b9c3cc1)
-compares a generated master dataset against a real staged CLIF reference across
-missingness, length-of-stay, life-support rates, mortality, and the longitudinal
-illness trajectory (MAP falling and creatinine rising toward death). It documents
-what matches by design and what is intentionally different (demographics, age,
-network-median mortality).
+audits both shipped populations against real CLIF — the ICU cohort against the
+real ICU population and the whole-hospital dataset against the real whole-hospital
+population — across missingness, length-of-stay, life support, death, patient flow,
+lab-value shape, the longitudinal illness trajectory, and privacy. It documents
+what matches and what is intentionally different by design (demographics,
+network-median mortality, cleaner patient flow).
 
 ## Status
 
-The fit and generate stages and all three evaluation surfaces are implemented;
-all 19 tables generate and pass conformance. The fit stage requires a staged real
-CLIF-MIMIC set and is **not** part of the public distribution — generation needs
-only the parameter pack. See `docs/plans/` for the implementation plan.
+The fit and generate stages, both population modes (ICU cohort and whole-hospital),
+and all three evaluation surfaces are implemented; all 19 tables generate and pass
+conformance. The fit stage requires a staged real CLIF set and is **not** part of
+the public distribution — generation needs only the committed `base_pack/`. See
+`docs/REPRODUCIBILITY.md` for the full pipeline and `docs/plans/` for the design.
 
 ## Provenance & licensing
 
