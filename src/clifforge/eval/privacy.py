@@ -43,6 +43,11 @@ __all__ = ["PrivacyReport", "privacy_metrics"]
 _ID = "hospitalization_id"
 _LABEL = "label"
 
+#: Decimal places the reported metrics (and the identifiability comparison) are
+#: rounded to, so multi-threaded-BLAS ULP noise cannot make two calls on identical
+#: input differ. Far finer than any privacy metric needs; far coarser than the noise.
+_ROUND = 9
+
 
 @dataclass(frozen=True)
 class PrivacyReport:
@@ -94,16 +99,23 @@ def privacy_metrics(
     dcr = d_s2r[:, 0]
     nndr = dcr / (d_s2r[:, 1] + 1e-12)
 
-    # Identifiability: real -> nearest OTHER real (col 1 excludes self) vs nearest synthetic.
+    # Identifiability: real -> nearest OTHER real (col 1 excludes self) vs synthetic.
     d_r2r, _ = NearestNeighbors(n_neighbors=2).fit(xr).kneighbors(xr)
     d_real_nn = d_r2r[:, 1]
     d_r2s, _ = NearestNeighbors(n_neighbors=1).fit(xs).kneighbors(xr)
-    identifiability = float(np.mean(d_r2s[:, 0] < d_real_nn))
+    # Round the two distances before the strict comparison: multi-threaded BLAS
+    # reduces sums in a nondeterministic order across calls (and across platforms —
+    # OpenBLAS vs Apple Accelerate), so the last ULP can flip a borderline
+    # nearest-neighbour comparison and shift ``identifiability`` by 1/n. Genuine
+    # differences between continuous distances are far larger than ``_ROUND``, so
+    # rounding removes only the noise and makes the metric bit-reproducible (the
+    # documented "Deterministic" contract).
+    identifiability = float(np.mean(np.round(d_r2s[:, 0], _ROUND) < np.round(d_real_nn, _ROUND)))
 
     return PrivacyReport(
-        dcr_median=float(np.median(dcr)),
-        dcr_p5=float(np.percentile(dcr, 5)),
-        nndr_median=float(np.median(nndr)),
+        dcr_median=round(float(np.median(dcr)), _ROUND),
+        dcr_p5=round(float(np.percentile(dcr, 5)), _ROUND),
+        nndr_median=round(float(np.median(nndr)), _ROUND),
         identifiability=identifiability,
         n_synthetic=int(xs.shape[0]),
         n_real=int(xr.shape[0]),
