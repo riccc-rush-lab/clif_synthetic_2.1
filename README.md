@@ -123,6 +123,16 @@ version, and per-table SHA-256 content hashes. Full-size masters (an 85k ICU
 cohort and a 365k whole-hospital population) are generated from `base_pack/` on
 demand — see below.
 
+**How the shipped data was generated.** The committed samples and the reference
+masters were produced by `scripts/generate_deliverable.py` from the aggregate
+`base_pack/` (fitted once to real CLIF; no real data is present at generation) on
+a **Mac Studio (Apple M4 Max, 64 GB unified memory), Python 3.12, polars**. A 365k
+whole-hospital population took ~25 minutes; the committed samples reproduce
+byte-for-byte on any machine (see [System requirements](#system-requirements)).
+The **method** is empirical-fidelity fit-then-sample — see
+[How it stays synthetic](#how-it-stays-synthetic) and
+[`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) for the full pipeline.
+
 ## Ideate your own CLIF-like dataset
 
 The shipped datasets are **masters** — off-the-shelf bases everyone builds on.
@@ -167,6 +177,19 @@ uv run clif-forge generate --spec my-variant.toml --out ./my-dataset
 uv run clif-forge generate --spec my-variant.toml --n-patients 50000 --out ./my-hospital
 ```
 
+### Each mode's default "rules" — and how to change them
+
+Every generated dataset (each **batch**) is produced by a mode whose defaults are
+**calibrated to real CLIF statistics** — these are the mode's *rules*, and they are
+a starting point, not a fixed recipe. A CLIF user overrides any of them per
+generation (via the spec or the Python API) to make a distinct, still-conformant
+derivative:
+
+| Mode | Default rules (calibrated to real CLIF) |
+|---|---|
+| **`icu`** (ICU cohort) | every stay an ICU stay · in-hospital mortality ~9.5% · invasive ventilation ~41% · vasopressors ~33% · CRRT ~4% · hospital-LOS median ~165 h |
+| **`full_hospital`** (whole hospital) | ~15% reach the ICU · hospital-LOS median ~67 h · mortality ~2% · admissions ED 76% / OR 10% / direct 10% / OSH 3% · ICU access = ward→ICU ~12% + OSH→ICU ~3% + planned ~2% |
+
 ### What's tweakable
 
 | Axis | Spec field(s) | Notes |
@@ -175,6 +198,7 @@ uv run clif-forge generate --spec my-variant.toml --n-patients 50000 --out ./my-
 | **Size** | `n` / `--n-patients` | any count; chunked + collision-free |
 | **Demographics** | `age_shift`, `hispanic_frac`, `race_target` | relative to the base pack |
 | **Illness rates** (ICU) | `imv`, `mortality_scale`, `vaso_frac`, `crrt_prob`, `prone_severe` | organ-support and death targets |
+| **Resources** | `--chunk-size`, `--max-threads` | RAM and CPU dials (see System requirements) |
 | **Seed** | `seed` / `--seed` | one seed → byte-identical output |
 
 For finer control the **Python API** exposes every recalibration knob directly —
