@@ -125,6 +125,24 @@ def _device_for(level: int, resp_failure: bool, *, l2_noninvasive: bool = False)
     return "Room Air"
 
 
+def _device_gated(level: int, l2_niv: str | None, low_flow: str) -> str:
+    """Base device when non-invasive support is a per-stay gated property.
+
+    The ICU floor (level 2) baseline is **low-flow** — non-invasive support
+    (NIPPV / High Flow NC) is assigned once per stay at its real per-stay
+    prevalence (``l2_niv``) rather than minted for every floor stay. IMV is
+    reserved for the intubation tier (level >= 3), so the floor never produces
+    spurious ventilation regardless of the respiratory-failure flag.
+    """
+    if level >= IMV_MIN_SUPPORT_LEVEL:
+        return "IMV"
+    if level == 2:
+        return l2_niv if l2_niv is not None else low_flow
+    if level == 1:
+        return low_flow
+    return "Room Air"
+
+
 def _set_values(device: str, rng: np.random.Generator) -> dict[str, float]:
     """Documented in-bounds settings for the device's matrix fields (un-fitted)."""
     pool = {
@@ -165,16 +183,31 @@ def sample_respiratory_support(
     )
     niv = _NIV_DEVICES[int(rng.integers(len(_NIV_DEVICES)))] if enrich else "High Flow NC"
 
+    # New gated path: when the pack carries an ``niv`` target, non-invasive support
+    # is assigned once per stay at its real per-stay prevalence (rather than minted
+    # for every ICU-floor stay, which over-produced NIPPV/HFNC several-fold). Drawn
+    # here so the assignment is stable across the stay's segments.
+    niv_target = params.get("niv")
+    l2_niv: str | None = None
+    if isinstance(niv_target, dict):
+        r = rng.random()
+        p_nippv = float(niv_target.get("nippv_prob", 0.0))
+        p_hfnc = float(niv_target.get("hfnc_prob", 0.0))
+        l2_niv = "NIPPV" if r < p_nippv else ("High Flow NC" if r < p_nippv + p_hfnc else None)
+
     # Per-interval (device, tracheostomy) with the latch + AE1 weaning rule.
     trach = 0
     imv_run = 0
     timeline: list[tuple[str, int]] = []
     for level, resp in zip(spine.support_level, spine.resp_flag, strict=True):
-        device = _device_for(level, resp, l2_noninvasive=l2_noninvasive)
-        if enrich and device == "Nasal Cannula":
-            device = low_flow
-        elif enrich and device == "High Flow NC":
-            device = niv
+        if niv_target is not None:
+            device = _device_gated(level, l2_niv, low_flow)
+        else:
+            device = _device_for(level, resp, l2_noninvasive=l2_noninvasive)
+            if enrich and device == "Nasal Cannula":
+                device = low_flow
+            elif enrich and device == "High Flow NC":
+                device = niv
         if device == "IMV":
             imv_run += 1
             if imv_run >= _TRACH_MIN_IMV_INTERVALS:
