@@ -97,11 +97,12 @@ def test_id_offset_shifts_identifiers_for_chunked_generation(pack: ParamPack) ->
     # shifted, collision-free identifiers, and staying reproducible per chunk.
     base = generate_dataset(pack, n_patients=5, seed=3)
     shifted = generate_dataset(pack, n_patients=5, seed=3, id_offset=100)
+    # Ids are emitted as 1-based integers (analyst-friendly, no leading zeros).
     assert base.tables["hospitalization"]["hospitalization_id"].to_list() == [
-        f"H{i}" for i in range(5)
+        i + 1 for i in range(5)
     ]
     assert shifted.tables["hospitalization"]["hospitalization_id"].to_list() == [
-        f"H{100 + i}" for i in range(5)
+        100 + i + 1 for i in range(5)
     ]
     # Disjoint id ranges across chunks (no collisions when concatenated).
     base_ids = set(base.tables["hospitalization"]["hospitalization_id"].to_list())
@@ -185,7 +186,7 @@ def test_first_encounters_stable_across_n_patients(pack: ParamPack) -> None:
     # property that would make generation safely resumable/extendable.
     small = generate_dataset(pack, n_patients=5, seed=9)
     large = generate_dataset(pack, n_patients=20, seed=9)
-    first5 = {f"P{i}" for i in range(5)}
+    first5 = set(small.tables["patient"]["patient_id"].to_list())  # the first 5 int patient ids
     small_p = small.tables["patient"].sort("patient_id")
     large_p = large.tables["patient"].filter(pl.col("patient_id").is_in(first5)).sort("patient_id")
     assert small_p.equals(large_p)

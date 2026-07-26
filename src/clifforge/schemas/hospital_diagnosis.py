@@ -15,7 +15,7 @@ from clifforge.schemas import base
 
 SCHEMA: pa.DataFrameSchema = pa.DataFrameSchema(
     {
-        "patient_id": base.id_column(),
+        "patient_id": base.numeric_id_column(),
         "diagnostic_code": base.plain_float(),
         "diagnosis_code_format": base.string(),
         "start_dttm": base.utc_datetime(),
