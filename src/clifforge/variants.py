@@ -25,14 +25,20 @@ from clifforge.generate.populations import (
     apply_population_overrides,
     derive_chicago_population,
 )
-from clifforge.generate.recalibrate import recalibrate_to_network_median
+from clifforge.generate.recalibrate import (
+    recalibrate_to_full_hospital,
+    recalibrate_to_network_median,
+)
 
 __all__ = ["VariantSpec", "list_presets", "load_preset", "load_spec", "spec_to_pack"]
 
 #: Shipped example variant specs (repo-root ``presets/``); a preset *is* a spec.
 _PRESET_DIR = Path(__file__).resolve().parents[2] / "presets"
 
-_KNOWN_TOP = {"name", "n", "seed", "base_pack", "demographics", "rates"}
+_KNOWN_TOP = {"name", "n", "seed", "base_pack", "mode", "demographics", "rates"}
+#: Population modes: the ICU cohort (network-median, every stay an ICU stay) or the
+#: full hospital population (ward/ED/stepdown/ICU mix with realistic arrival flow).
+_KNOWN_MODES = {"icu", "full_hospital"}
 _KNOWN_DEMOGRAPHICS = {"age_shift", "hispanic_frac", "race_target"}
 _KNOWN_RATES = {"imv", "mortality_scale", "vaso_frac", "crrt_prob", "prone_severe"}
 
@@ -45,6 +51,8 @@ class VariantSpec:
     n: int = 85_248
     seed: int = 2025
     base_pack: str | None = None
+    #: "icu" (network-median ICU cohort, default) or "full_hospital" (ward/ED/ICU mix).
+    mode: str = "icu"
     # demographics — age_shift is *relative to the base pack* (0 = the base's age
     # distribution); the master's own shift is already baked into the base pack.
     age_shift: float = 0.0
@@ -77,6 +85,8 @@ def _unit(value: float, name: str, *, lo: float = 0.0, hi: float = 1.0) -> float
 def _validate(spec: VariantSpec) -> None:
     if spec.n <= 0:
         raise SpecError(f"n must be positive, got {spec.n}")
+    if spec.mode not in _KNOWN_MODES:
+        raise SpecError(f"mode must be one of {sorted(_KNOWN_MODES)}, got {spec.mode!r}")
     _unit(spec.imv, "rates.imv")
     _unit(spec.vaso_frac, "rates.vaso_frac")
     _unit(spec.crrt_prob, "rates.crrt_prob")
@@ -99,6 +109,7 @@ def _parse(data: dict[str, Any]) -> VariantSpec:
         n=int(data.get("n", defaults.n)),
         seed=int(data.get("seed", defaults.seed)),
         base_pack=data.get("base_pack"),
+        mode=str(data.get("mode", defaults.mode)),
         age_shift=float(demo.get("age_shift", defaults.age_shift)),
         hispanic_frac=demo.get("hispanic_frac"),
         race_target=demo.get("race_target"),
@@ -165,6 +176,11 @@ def spec_to_pack(
         )
 
     flags = {"resp_flag": 0.5, "cv_flag": spec.vaso_frac, "renal_flag": 0.05, "neuro_flag": 0.2}
+    if spec.mode == "full_hospital":
+        # Full hospital population (ward/ED/stepdown/ICU with realistic arrival flow).
+        # The full-hospital transform carries its own tuned acuity/LOS/flow defaults;
+        # the spec's ICU-specific rate overrides (imv, mortality_scale) do not apply.
+        return recalibrate_to_full_hospital(derived, crrt_prob=spec.crrt_prob)
     return recalibrate_to_network_median(
         derived,
         peak_imv_target=spec.imv,

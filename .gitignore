@@ -29,6 +29,10 @@ venv/
 # exception — the biggest sample that stays under GitHub's 100 MB/file limit.
 !sample_dataset/**
 
+# The committed full-hospital-population sample (~8k encounters, ward/ED/ICU mix
+# with realistic patient flow) — a second off-the-shelf sample, also an exception.
+!sample_full_hospital/**
+
 # OS / IDE
 .DS_Store
 .idea/

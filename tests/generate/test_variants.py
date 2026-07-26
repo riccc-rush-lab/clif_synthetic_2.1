@@ -35,6 +35,28 @@ def test_minimal_spec_uses_master_defaults(tmp_path: Path) -> None:
     )
 
 
+def test_mode_defaults_to_icu_and_parses_full_hospital(tmp_path: Path) -> None:
+    assert load_spec(_write(tmp_path, 'name = "x"\n')).mode == "icu"
+    spec = load_spec(_write(tmp_path, 'name = "fh"\nmode = "full_hospital"\n'))
+    assert spec.mode == "full_hospital"
+
+
+def test_invalid_mode_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(SpecError, match="mode must be one of"):
+        load_spec(_write(tmp_path, 'name = "x"\nmode = "outpatient"\n'))
+
+
+def test_full_hospital_mode_enables_location_enrichment_and_arrival_flow() -> None:
+    spec = VariantSpec(mode="full_hospital")
+    pack = spec_to_pack(spec, demo_pack())
+    adt_params = pack.tables["adt"]["params"]
+    assert adt_params["enrich_locations"] is True
+    assert adt_params["arrival_location_marginal"]  # ED/OR-dominant arrival mix present
+    # The ICU-mode default (no enrichment) is the contrast.
+    icu_pack = spec_to_pack(VariantSpec(mode="icu"), demo_pack())
+    assert icu_pack.tables["adt"]["params"].get("enrich_locations") is False
+
+
 def test_full_spec_overrides_are_parsed(tmp_path: Path) -> None:
     spec = load_spec(
         _write(
