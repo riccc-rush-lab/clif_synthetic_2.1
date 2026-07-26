@@ -19,9 +19,46 @@ from clifforge.fit.param_pack import ParamPack
 __all__ = [
     "ICU_MIN_SUPPORT_LEVEL",
     "IMV_MIN_SUPPORT_LEVEL",
+    "NUMERIC_ID_COLUMNS",
+    "PATIENT_ID_OFFSET",
     "UTC_DATETIME",
+    "enforce_numeric_ids",
     "grid_step_hours",
 ]
+
+#: THE ID-TYPE RULE (hardcoded, single source of truth). The analyst-facing join
+#: keys are emitted as integers so they load as numbers — no leading zeros, no
+#: string coercion — in Python, R, and Stata; every other id column
+#: (``device_id``, ``provider_id``, ``med_order_id``, ``culture_id``,
+#: ``hospital_id``) stays a string. Applied to every generated table (see
+#: :func:`enforce_numeric_ids`) and enforced by the conformance gate
+#: (``schemas.base.numeric_id_column``).
+NUMERIC_ID_COLUMNS = ("patient_id", "hospitalization_id", "hospitalization_joined_id")
+
+#: ``patient_id`` is shifted into this disjoint high range so it never numerically
+#: collides with ``hospitalization_id`` (both derive from the same encounter index).
+PATIENT_ID_OFFSET = 1_000_000_000
+
+
+def enforce_numeric_ids(frame: pl.DataFrame) -> pl.DataFrame:
+    """Apply THE id-type rule to a frame: cast the analyst-facing ids in
+    :data:`NUMERIC_ID_COLUMNS` from their internal prefixed-string form
+    (``H{i}`` / ``P{i}``) to 1-based ``Int64``, with ``patient_id`` shifted by
+    :data:`PATIENT_ID_OFFSET`. Other id columns are left untouched (strings).
+    Idempotent — a column already ``Int64`` is skipped — so it is safe to apply
+    at every boundary (frame build, gate, write)."""
+    exprs = []
+    for col in ("hospitalization_id", "hospitalization_joined_id"):
+        if col in frame.columns and frame.schema[col] == pl.String:
+            exprs.append((pl.col(col).str.strip_prefix("H").cast(pl.Int64) + 1).alias(col))
+    if "patient_id" in frame.columns and frame.schema["patient_id"] == pl.String:
+        exprs.append(
+            (
+                pl.col("patient_id").str.strip_prefix("P").cast(pl.Int64) + 1 + PATIENT_ID_OFFSET
+            ).alias("patient_id")
+        )
+    return frame.with_columns(exprs) if exprs else frame
+
 
 #: The polars dtype for every tz-aware UTC datetime column (R7). Shared so a
 #: generator's frame schema never drifts from the conformance gate's expectation.
