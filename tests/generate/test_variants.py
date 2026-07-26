@@ -147,3 +147,12 @@ def test_high_acuity_preset_raises_imv() -> None:
 def test_unknown_preset_raises() -> None:
     with pytest.raises(SpecError, match="unknown preset"):
         load_preset("does-not-exist")
+
+
+def test_default_base_pack_resolves_to_a_usable_pack() -> None:
+    # A pip-installed user with no ./base_pack must still find the shipped one, so
+    # the default resolves to a directory that holds a real (loadable) pack.
+    from clifforge.variants import default_base_pack_path
+
+    pack_dir = Path(default_base_pack_path())
+    assert (pack_dir / "manifest.json").exists(), "the default base pack must be usable"

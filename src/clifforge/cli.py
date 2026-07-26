@@ -64,8 +64,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     generate.add_argument(
         "--base-pack",
-        default="base_pack",
-        help="Base pack a --spec/--preset derives from (default: the shipped shareable base pack).",
+        default=None,
+        help="Base pack a --spec/--preset derives from. Default: a local ./base_pack "
+        "if present, else the shareable base pack shipped inside the package.",
     )
     generate.add_argument(
         "--chunk-size",
@@ -108,7 +109,12 @@ def _run_generate(args: argparse.Namespace) -> int:
         write_dataset,
     )
     from clifforge.manifest import write_manifest
-    from clifforge.variants import load_preset, load_spec, spec_to_pack
+    from clifforge.variants import (
+        default_base_pack_path,
+        load_preset,
+        load_spec,
+        spec_to_pack,
+    )
 
     use_spec = args.spec is not None or args.preset is not None
     if not use_spec and not args.demo and args.pack is None:
@@ -123,7 +129,7 @@ def _run_generate(args: argparse.Namespace) -> int:
     try:
         if use_spec:
             spec = load_spec(args.spec) if args.spec is not None else load_preset(args.preset)
-            base = ParamPack.load(args.base_pack)
+            base = ParamPack.load(args.base_pack or default_base_pack_path())
             pack = spec_to_pack(spec, base)  # no real_dir -> demographic-override path
             n_patients = args.n_patients if args.n_patients is not None else spec.n
             seed = args.seed if args.seed is not None else spec.seed

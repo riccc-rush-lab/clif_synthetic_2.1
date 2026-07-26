@@ -19,6 +19,40 @@ aggregate CLIF statistics so its output lands in the real statistical region —
 close enough to train models against — while being provably synthetic (no real
 record leaves the fit stage; no synthetic record traces back to a real patient).
 
+## Quickstart (for CLIF researchers)
+
+**Want realistic synthetic CLIF data of your own?** Install and generate — no real
+data, no credential, no fit. The shareable base pack (calibrated to real CLIF)
+ships inside the package, so the output lands in the real statistical region:
+
+```bash
+pip install git+https://github.com/riccc-rush-lab/clif_synthetic_2.1.git
+
+# an ICU cohort (network-median defaults) —
+clif-forge generate --preset high-acuity --n-patients 5000 --out ./my-icu
+
+# a whole-hospital population (2-line recipe) —
+printf 'name = "my-hospital"\nmode = "full_hospital"\n' > hospital.toml
+clif-forge generate --spec hospital.toml --n-patients 20000 --out ./my-hospital
+```
+
+Output is one `clif_<table>.parquet` per CLIF 2.1 table — load it with your usual
+CLIF tooling. Tune any of the [rules](#each-modes-default-rules--and-how-to-change-them)
+(size, demographics, illness rates, population shape) via a TOML spec.
+
+**Want the ready-made datasets to inspect first?** Clone the repo — two off-the-shelf
+samples are committed (`sample_dataset/` ICU, `sample_full_hospital/` whole-hospital),
+and the full-size masters regenerate from `base_pack/` on demand:
+
+```bash
+git clone https://github.com/riccc-rush-lab/clif_synthetic_2.1.git
+```
+
+**Is it clinically believable?** See the
+[synthetic-vs-real validation report](https://claude.ai/code/artifact/d72f6a8d-b209-469d-82ad-b99d2b9c3cc1)
+and [Data available off the shelf](#data-available-off-the-shelf). Validate your own
+output against a real CLIF reference with `scripts/validate_against_real.py`.
+
 ## How it stays synthetic
 
 - **Aggregate-only fit-then-sample.** A one-time fit stage emits a versioned
