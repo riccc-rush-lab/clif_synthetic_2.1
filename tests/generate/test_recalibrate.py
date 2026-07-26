@@ -13,6 +13,7 @@ import numpy as np
 
 from clifforge.fit.param_pack import ParamPack
 from clifforge.generate.recalibrate import (
+    recalibrate_to_full_hospital,
     recalibrate_to_network_median,
     repair_vitals_dispersion,
 )
@@ -201,6 +202,64 @@ def test_generator_paths_enabled() -> None:
     assert niv["nippv_prob"] == 0.064 and niv["hfnc_prob"] == 0.069
     assert out["medication_admin_continuous"]["params"]["vasopressor_per_stay"] is True
     assert out["labs"]["params"]["ward_panel_interval_hours"] is not None
+    assert out["spine"]["params"]["terminal_deterioration_hours"] == 24.0
+
+
+# --- full-hospital transform ----------------------------------------------- #
+
+
+def test_full_hospital_does_not_mutate_input() -> None:
+    pack = _pack()
+    before_start = dict(pack.tables["spine"]["params"]["support_level_start_dist"])
+    before_soj = pack.tables["spine"]["params"]["support_level_sojourn"]["1"]["params"][2]
+    recalibrate_to_full_hospital(pack)
+    assert pack.tables["spine"]["params"]["support_level_start_dist"] == before_start
+    assert pack.tables["spine"]["params"]["support_level_sojourn"]["1"]["params"][2] == before_soj
+    assert "adt" not in pack.tables  # enrichment block added only on the copy
+
+
+def test_full_hospital_enables_location_enrichment() -> None:
+    # The defining difference from the ICU mode: ed/ward/stepdown/icu locations on.
+    out = recalibrate_to_full_hospital(_pack()).tables
+    assert out["adt"]["params"]["enrich_locations"] is True
+
+
+def test_full_hospital_start_law_is_ward_dominant() -> None:
+    # Most start/peak mass sits below the stepdown tier (levels 0-1 = ward/ED), the
+    # opposite of the ICU-conditioned mode, which puts all mass at level 2+.
+    start = recalibrate_to_full_hospital(_pack()).tables["spine"]["params"][
+        "support_level_start_dist"
+    ]
+    ward = start.get("0", 0.0) + start.get("1", 0.0)
+    icu = sum(start.get(k, 0.0) for k in ("3", "4", "5"))
+    assert ward > 0.7  # ward/ED dominant
+    assert start["2"] < 0.1 < ward  # only a thin stepdown slice
+    assert 0.08 < icu < 0.2  # a minority reach an ICU tier
+
+
+def test_full_hospital_tempers_stepdown_and_high_escalation() -> None:
+    out = recalibrate_to_full_hospital(_pack()).tables["spine"]["params"]
+    row = out["support_level_transition_matrix"]["1"]
+    # Escalation to the stepdown tier (L2) and the invasive tier (L4) are both damped
+    # so peak tracks start; recovery (L1 self-loop) carries the shed mass.
+    assert row.get("2", 0.0) < 0.1
+    assert row.get("4", 0.0) < 0.05
+    assert row["1"] > 0.0
+
+
+def test_full_hospital_mortality_target_is_low_by_default() -> None:
+    # Full-population mortality (~0.021) is far below the ICU cohort's; the default
+    # target solves the peak-coupled scale down from the base expired rates.
+    out = recalibrate_to_full_hospital(_pack(expired_rate=0.2)).tables["spine"]["params"]
+    # Uniform base rates -> every peak cell lands on the 0.021 target.
+    for cell in out["expired_rate_by_peak_level"].values():
+        assert cell["expired_rate"] < 0.2  # scaled down, not up
+
+
+def test_full_hospital_gated_generator_paths_carry_through() -> None:
+    out = recalibrate_to_full_hospital(_pack()).tables
+    assert out["respiratory_support"]["params"]["niv"]["nippv_prob"] < 0.06  # low-prevalence
+    assert out["medication_admin_continuous"]["params"]["vasopressor_per_stay"] is True
     assert out["spine"]["params"]["terminal_deterioration_hours"] == 24.0
 
 

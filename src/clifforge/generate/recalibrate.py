@@ -52,7 +52,11 @@ from clifforge.fit.estimators import DISCHARGE_STATE
 from clifforge.fit.param_pack import ParamPack
 from clifforge.reference import bounds
 
-__all__ = ["recalibrate_to_network_median", "repair_vitals_dispersion"]
+__all__ = [
+    "recalibrate_to_full_hospital",
+    "recalibrate_to_network_median",
+    "repair_vitals_dispersion",
+]
 
 #: High-acuity (invasive-ventilation) levels whose start/escalation mass is tempered.
 _HIGH_LEVELS: tuple[str, ...] = ("3", "4", "5")
@@ -125,6 +129,28 @@ def _temper_transitions(
         _renormalize(row)
 
 
+def _temper_stepdown_escalation(
+    matrix: dict[str, dict[str, float]], *, stepdown_keep: float
+) -> None:
+    """Temper escalation into the stepdown tier (level 2), routing the rest to recovery.
+
+    :func:`_temper_transitions` only tempers the invasive-ventilation tier (levels
+    3-5); its de-escalation even *adds* mass to level 2. In the ICU cohort that is
+    the floor and is fine, but the full hospital population must keep most stays at
+    ward acuity, so escalation into level 2 would otherwise pull the stepdown
+    fraction far above its ~8% target. This keeps only ``stepdown_keep`` of each
+    row's mass toward level 2, routing the rest to level 1 (recovery), so a stay's
+    peak tier tracks its start tier for stepdown just as it does for the ICU tiers.
+    Rows are renormalized in place; run **after** :func:`_temper_transitions`.
+    """
+    for row in matrix.values():
+        if "2" in row:
+            shed = row["2"] * (1.0 - stepdown_keep)
+            row["2"] -= shed
+            row["1"] = row.get("1", 0.0) + shed
+        _renormalize(row)
+
+
 def _real_peak_profile(spine_params: dict[str, Any]) -> dict[str, float]:
     """Real per-hospitalization peak-level distribution, from the fit's peak counts."""
     by_peak = spine_params.get("expired_rate_by_peak_level", {})
@@ -148,6 +174,34 @@ def _network_median_peak_target(real: dict[str, float], imv_target: float) -> di
     hs = sum(high.values()) or 1.0
     target = {k: imv_target * v / hs for k, v in high.items()}
     target["2"] = 1.0 - imv_target  # ICU floor: non-ventilated ICU stays peak at L2
+    return target
+
+
+def _full_hospital_peak_target(
+    real: dict[str, float], icu_target: float, stepdown_target: float
+) -> dict[str, float]:
+    """Full-hospital-population peak-level target (ward-dominant, not ICU-conditioned).
+
+    Unlike :func:`_network_median_peak_target` (every stay is an ICU stay), the full
+    hospital population is dominated by ward/ED stays that never reach an ICU tier:
+    only ``icu_target`` of stays peak at invasive-ventilation acuity (level >= 3, an
+    ``icu`` ADT location), ``stepdown_target`` peak at the high-flow/NIV tier (level
+    2, ``stepdown``), and the rest stay at ward/ED acuity (levels 0-1). The
+    reaches-ICU mass is spread across levels 3-5 in the **real** high-acuity
+    proportions and the ward mass across levels 0-1 in the real low-acuity
+    proportions (from the fit's per-peak hospitalization counts), so the within-tier
+    acuity shape stays realistic while the tier fractions hit the measured full-pop
+    targets.
+    """
+    high = {k: v for k, v in real.items() if int(k) >= 3}
+    hs = sum(high.values()) or 1.0
+    ward = {k: v for k, v in real.items() if int(k) <= 1}
+    ws = sum(ward.values()) or 1.0
+    ward_mass = max(0.0, 1.0 - icu_target - stepdown_target)
+    target = {k: icu_target * v / hs for k, v in high.items()}
+    target["2"] = stepdown_target
+    for k, v in ward.items():
+        target[k] = ward_mass * v / ws
     return target
 
 
@@ -386,6 +440,156 @@ def recalibrate_to_network_median(
     tables["labs"] = labs
     # Renal failure drives creatinine/BUN up in many stays (incl. every terminal
     # decline); only a fraction are dialyzed, so CRRT is gated to its real rate.
+    tables["crrt_therapy"] = {"params": {"crrt_prob": crrt_prob}}
+    tables["position"] = {
+        "params": {"prone_prob_severe": prone_prob_severe, "prone_prob_otherwise": 0.001}
+    }
+
+    return ParamPack(manifest=dict(pack.manifest), tables=tables)
+
+
+def recalibrate_to_full_hospital(
+    pack: ParamPack,
+    *,
+    esc_keep: float = 0.04,
+    stepdown_keep: float = 0.05,
+    icu_target: float = 0.12,
+    stepdown_target: float = 0.05,
+    peak_target: dict[str, float] | None = None,
+    disch_damp: float = 1.0,
+    sojourn_multipliers: dict[str, float] | None = None,
+    sojourn_shape_scale: float = 0.68,
+    mortality_scale: float = 1.0,
+    mortality_target: float | None = 0.021,
+    flag_target_prevalence: dict[str, float] | None = None,
+    prone_prob_severe: float = 0.026,
+    niv_nippv_prob: float = 0.03,
+    niv_hfnc_prob: float = 0.035,
+    vasopressor_cv_boost: float = 3.0,
+    lab_panel_interval_hours: float = 12.0,
+    lab_ward_panel_interval_hours: float = 24.0,
+    terminal_deterioration_hours: float = 24.0,
+    crrt_prob: float = 0.29,
+    repair_vitals: bool = True,
+) -> ParamPack:
+    """Return a deep-copied pack recalibrated to the **full hospital population**.
+
+    This is the ward/ED/stepdown/ICU sibling of
+    :func:`recalibrate_to_network_median`. Where that function conditions on an ICU
+    stay (every trajectory peaks at the ICU floor or above), this one shapes a
+    ward-dominant cohort in which most stays never leave ward/ED acuity, a minority
+    pass through stepdown, and ~15.6% reach an ICU tier — the mix measured on the
+    real full hospital population (ICU fraction 0.156, stepdown ~0.08, hospital-LOS
+    median ~67h, in-hospital mortality ~0.021).
+
+    The transform is the same principled machine, retargeted:
+
+    * **ADT location enrichment is enabled** (``enrich_locations``) so the ed / ward
+      / stepdown / icu location mix appears — a stay's ADT tier is driven by its
+      spine support level (level 0 admit -> ed, 1 -> ward, 2 -> stepdown, >= 3 ->
+      icu).
+    * **The peak-acuity distribution is shaped ward-dominant.** Escalation to the
+      invasive-ventilation tier (levels 3-5) *and* to the stepdown tier (level 2) is
+      tempered so peak tracks start, and the start law is set to a full-population
+      peak target (see :func:`_full_hospital_peak_target`) placing ``icu_target``
+      start mass at the ICU tiers and ``stepdown_target`` at stepdown, the rest at
+      ward/ED. These are **start-law** fractions; residual (tempered) escalation and
+      the terminal-deterioration climb of decedents lift the realized peak fractions
+      somewhat, so the defaults (0.12 / 0.05) sit below the measured real peak
+      fractions (0.156 / 0.08) and land the generated cohort on them (probe: ICU
+      0.164, stepdown 0.074 at n=4000).
+    * **Sojourns are scaled to the short full-population LOS** — most stays are brief
+      ward stays, so the multipliers are far smaller than the ICU mode's; the
+      log-normal tails are tightened by ``sojourn_shape_scale`` as there.
+    * **Mortality is solved to the low full-population rate** (``mortality_target``
+      0.021, peak-coupled) rather than the ICU cohort's ~9.5%.
+    * The corrected generator paths that still apply carry through: vitals-dispersion
+      repair, terminal deterioration, per-stay non-invasive support gating (kept
+      low-prevalence), decoupled organ flags, gated CRRT. Lab presence/quantiles ride
+      through the base pack unchanged.
+
+    Every argument is a documented keyword lever over that transform; the input pack
+    is deep-copied and never mutated (R22). The default ``mortality_scale`` is a
+    no-op because ``mortality_target`` is set by default (the target path takes
+    precedence); pass ``mortality_target=None`` to fall back to the fixed scale.
+    """
+    tables = copy.deepcopy(dict(pack.tables))
+    spine = tables["spine"]["params"]
+
+    _temper_transitions(
+        spine["support_level_transition_matrix"], esc_keep=esc_keep, disch_damp=disch_damp
+    )
+    # Also temper escalation into the stepdown tier (level 2) so the ward-dominant
+    # cohort keeps its stepdown fraction near target; peak then tracks start for the
+    # whole ward/stepdown/ICU split.
+    _temper_stepdown_escalation(
+        spine["support_level_transition_matrix"], stepdown_keep=stepdown_keep
+    )
+    # Shape the peak-acuity distribution ward-dominant through the start law (peak
+    # tracks start once escalation is tempered).
+    target = peak_target or _full_hospital_peak_target(
+        _real_peak_profile(spine), icu_target, stepdown_target
+    )
+    _apply_peak_target(spine["support_level_start_dist"], target)
+    _scale_sojourns(
+        spine["support_level_sojourn"],
+        sojourn_multipliers or {"0": 1.0, "1": 3.4, "2": 2.2, "3": 2.2, "4": 2.2},
+        shape_scale=sojourn_shape_scale,
+    )
+    # Mortality: ``mortality_target`` (default 0.021) solves the peak-coupled scale
+    # analytically against the peak-target distribution; otherwise the fixed
+    # ``mortality_scale`` is applied.
+    if mortality_target is not None:
+        eff_mortality_scale = _solve_mortality_scale(
+            target,
+            spine["expired_rate_by_peak_level"],
+            float(spine.get("outcome_marginal", {}).get("expired", 0.0)),
+            mortality_target,
+        )
+    else:
+        eff_mortality_scale = mortality_scale
+    for cell in spine["expired_rate_by_peak_level"].values():
+        cell["expired_rate"] = min(1.0, cell["expired_rate"] * eff_mortality_scale)
+
+    spine["terminal_deterioration_hours"] = terminal_deterioration_hours
+
+    if repair_vitals:
+        repair_vitals_dispersion(tables)
+
+    # Decoupled organ axes at full-population marginals (the ward-heavy cohort has a
+    # lower organ-support prevalence than the ICU cohort, but the per-stay flag is
+    # still gated to ICU time, so only reaches-ICU stays carry active support).
+    spine["flag_target_prevalence"] = flag_target_prevalence or {
+        "resp_flag": 0.5,
+        "cv_flag": 0.27,
+        "renal_flag": 0.05,
+        "neuro_flag": 0.2,
+    }
+
+    # Enable the ed/ward/stepdown/icu location mix — the defining difference from the
+    # ICU mode, which sets this False (every stay an ICU stay).
+    tables["adt"] = {"params": {"enrich_locations": True}}
+    # Non-invasive support stays a low-prevalence per-stay property; the gated path
+    # also keeps IMV to the intubation tier (level >= 3) so the ward/stepdown floor
+    # never produces spurious ventilation.
+    tables["respiratory_support"] = {
+        "params": {
+            "enrich_devices": True,
+            "niv": {"nippv_prob": niv_nippv_prob, "hfnc_prob": niv_hfnc_prob},
+        }
+    }
+    med = dict(tables.get("medication_admin_continuous", {}))
+    med_params = dict(med.get("params", {}))
+    med_params["vasopressor_per_stay"] = True
+    med_params["vasopressor_cv_boost"] = vasopressor_cv_boost
+    med["params"] = med_params
+    tables["medication_admin_continuous"] = med
+    labs = dict(tables.get("labs", {}))
+    lab_params = dict(labs.get("params", {}))
+    lab_params["panel_interval_hours"] = lab_panel_interval_hours
+    lab_params["ward_panel_interval_hours"] = lab_ward_panel_interval_hours
+    labs["params"] = lab_params
+    tables["labs"] = labs
     tables["crrt_therapy"] = {"params": {"crrt_prob": crrt_prob}}
     tables["position"] = {
         "params": {"prone_prob_severe": prone_prob_severe, "prone_prob_otherwise": 0.001}
