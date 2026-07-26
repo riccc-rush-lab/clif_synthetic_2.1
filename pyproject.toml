@@ -1,6 +1,6 @@
 [project]
 name = "clifforge"
-version = "0.0.1"
+version = "0.1.0"
 description = "CLIFForge — synthetic CLIF 2.1 ICU dataset generator"
 readme = "README.md"
 requires-python = ">=3.11"
