@@ -10,7 +10,7 @@ parquet files and identical content hashes).
 
 ```
 real CLIF ──fit──▶ base pack ──derive──▶ population pack ──recalibrate──▶ generation pack ──sample──▶ dataset + manifest
- (credentialed)   (aggregate)   (age/med/demographics)    (network-median)   (seeded, chunked)
+ (credentialed)   (aggregate)   (age/med/demographics)   (ICU or full-hospital)  (seeded, chunked)
 ```
 
 Each stage is a documented function with no hidden state:
@@ -19,12 +19,12 @@ Each stage is a documented function with no hidden state:
 |---|---|---|---|
 | **Fit** | `clif-forge fit` / `clifforge.fit.run_fit` | Learns aggregate parameters only (marginals, transitions, per-state physiology, correlations, prevalences) from real CLIF; **no row-level data retained**, every cell gated at n ≥ 20. Lab presence is conditioned on the clinically-defined ICU cohort (ADT location) and carries a fitted presence-correlation so co-ordered panels (metabolic panel, arterial blood gas) are generated together rather than independently. Lab values use an empirical quantile (inverse-CDF) marginal driven through the copula so skewed/multimodal shapes match real exactly — emitted only for labs with ≥ 20 records per grid interval (sparser labs keep the log-normal marginal, keeping the grid a bounded aggregate). | Seeded patient split; robust estimators. |
 | **Derive** | `clifforge.generate.populations.derive_chicago_population` | Re-weights demographics, shifts age quantiles, fits the med marginal. Deep-copies the input pack. | Pure function of pack + aggregate real stats. |
-| **Recalibrate** | `clifforge.generate.recalibrate.recalibrate_to_network_median` | Reshapes acuity/LOS/rates to the network median; adds the length-aware generator paths and terminal deterioration. Scales sojourns to the real LOS median and tightens each log-normal level's log-scale spread so hospital-LOS *tails* track the real cohort, not just the median. Gates non-invasive respiratory support (NIPPV / high-flow) to real per-stay prevalence. Deep-copies the input pack. | Documented parameters; no randomness. |
+| **Recalibrate** | `recalibrate_to_network_median` (ICU) / `recalibrate_to_full_hospital` (whole hospital) | Reshapes acuity/LOS/rates to the target population; adds the length-aware generator paths and terminal deterioration. Scales sojourns to the real LOS median and tightens each log-normal level's log-scale spread so hospital-LOS *tails* track the real cohort. Gates non-invasive respiratory support (NIPPV / high-flow) to real per-stay prevalence. The full-hospital transform is ward-dominant and adds a coupled per-stay admission route on the spine (ed→ED, elective→OR, direct→ward, osh→ICU) so admission type and arrival location agree, with realistic ward→ICU and outside-hospital→ICU flow. Deep-copies the input pack. | Documented parameters; no randomness. |
 | **Sample** | `clif-forge generate` / `clifforge.generate.orchestrator.generate_dataset` | Draws every table from the pack via a single `SeedSequence(seed)` spawned per encounter; conformance-gated before write. | `(seed, n, id_offset)` fully determines output (R22, AE6). |
 
 ## Reproduce the committed artifacts
 
-**The large sample** (`sample_dataset/`, ~10k encounters) — reproduces byte-for-byte
+**The ICU sample** (`sample_dataset/`, ~10k encounters) — reproduces byte-for-byte
 from the committed base pack, spec, and seed:
 
 ```bash
@@ -32,6 +32,15 @@ uv run clif-forge generate \
     --spec sample_dataset/spec.toml --base-pack base_pack \
     --n-patients 10000 --seed 42 --out ./reproduced
 # reproduced/manifest.json content hashes == sample_dataset/manifest.json
+```
+
+**The full-hospital sample** (`sample_full_hospital/`, ~8k encounters) — same
+contract, through the `mode = "full_hospital"` recipe:
+
+```bash
+uv run clif-forge generate \
+    --spec sample_full_hospital/spec.toml --base-pack base_pack \
+    --n-patients 8000 --seed 42 --out ./reproduced-full
 ```
 
 **A derivative variant** — any preset or spec is a reproducible recipe:
@@ -47,11 +56,14 @@ uv run python scripts/build_base_pack.py \
     --fitted-pack <fitted-pack> --real-dir <real-clif-dir> --out base_pack
 ```
 
-**The full master deliverable** (credentialed):
+**The full-size masters** (credentialed) — the ICU cohort (default) or, with
+`--full-hospital`, the whole-hospital population:
 
 ```bash
 uv run python scripts/generate_deliverable.py \
-    --base-pack <fitted-pack> --real-dir <real-clif-dir> --out <dir>
+    --base-pack <fitted-pack> --real-dir <real-clif-dir> --out <dir>            # ICU master
+uv run python scripts/generate_deliverable.py --full-hospital \
+    --base-pack <fitted-pack> --real-dir <real-clif-dir> --out <dir> --n 365000 # full hospital
 ```
 
 ## Provenance record
