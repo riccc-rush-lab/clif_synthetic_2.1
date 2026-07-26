@@ -1,0 +1,5 @@
+# Full-hospital-population sample: ward/ED/stepdown/ICU mix with realistic patient
+# flow (ER/OR-dominant arrivals, ~20% direct admissions, <10% ICU transfers).
+# Reproduces at n=8000, seed=42.
+name = "full-hospital-sample"
+mode = "full_hospital"
