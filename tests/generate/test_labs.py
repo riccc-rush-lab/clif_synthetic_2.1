@@ -206,6 +206,90 @@ def test_creatinine_rises_under_renal_failure() -> None:
     assert abs(float(np.mean(sod_bad)) - float(np.mean(sod_ok))) < 1.0  # sodium uncoupled
 
 
+# --------------------------------------------------------------------------- #
+# Empirical-quantile (inverse-CDF) marginals
+# --------------------------------------------------------------------------- #
+# A distinctly non-log-normal creatinine marginal: a two-mode distribution with
+# ~half the mass near 0.8 and ~half near 6.0 (mimicking a normal-renal cluster plus
+# a CKD tail), which a single log-normal cannot represent. On the 101-point grid,
+# probs < 0.50 map to 0.8, probs > 0.50 map to 6.0.
+_BIMODAL_CREATININE = [0.8] * 50 + [6.0] * 51
+
+
+def _quantile_pack(quantiles: dict[str, list[float]]) -> ParamPack:
+    pack = _pack()
+    pack.tables["labs"]["params"]["lab_quantiles"] = quantiles
+    return pack
+
+
+def test_lab_quantiles_marginal_is_recovered() -> None:
+    pack = _quantile_pack({"creatinine": _BIMODAL_CREATININE})
+    rng = np.random.default_rng(0)
+    vals = np.asarray(
+        [
+            o.lab_value_numeric
+            for i in range(60)
+            for o in sample_labs(_spine([3] * 30, hid=f"H{i}"), pack, rng)
+            if o.lab_category == "creatinine"
+        ]
+    )
+    # Bimodal shape is reproduced: ~half the mass at each mode, and almost nothing in
+    # the middle band a single log-normal would fill.
+    assert 0.4 < float(np.mean(vals < 2.0)) < 0.6
+    assert float(np.mean((vals > 2.0) & (vals < 5.0))) < 0.05
+    # Empirical quantiles recover the fitted grid within tolerance (marginal matched).
+    assert abs(float(np.quantile(vals, 0.25)) - 0.8) < 0.1
+    assert abs(float(np.quantile(vals, 0.75)) - 6.0) < 0.1
+
+
+def test_pack_without_quantiles_uses_lognormal_fallback() -> None:
+    # Backward-compat: older/demo packs carry no ``lab_quantiles`` and must still
+    # generate through the log-normal marginal path.
+    pack = _pack()
+    assert "lab_quantiles" not in pack.tables["labs"]["params"]
+    obs = sample_labs(_spine([3] * 6), pack, np.random.default_rng(0))
+    assert obs
+    for o in obs:
+        lo, hi = bounds("labs", o.lab_category)
+        assert lo <= o.lab_value_numeric <= hi
+
+
+def test_quantile_path_renal_coupling_raises_creatinine() -> None:
+    pack = _quantile_pack({"creatinine": _BIMODAL_CREATININE})
+    healthy = _spine([3] * 60, hid="Hok", renal=False)
+    failing = _spine([3] * 60, hid="Hbad", renal=True)
+    ok = [
+        o.lab_value_numeric
+        for o in sample_labs(healthy, pack, np.random.default_rng(1))
+        if o.lab_category == "creatinine"
+    ]
+    bad = [
+        o.lab_value_numeric
+        for o in sample_labs(failing, pack, np.random.default_rng(1))
+        if o.lab_category == "creatinine"
+    ]
+    assert float(np.mean(bad)) > float(np.mean(ok))  # value-space renal bump still lifts it
+
+
+def test_quantile_path_preserves_rng_stream() -> None:
+    # ``ndtr`` and ``np.interp`` draw no rng, so swapping the marginal map must not
+    # shift the stream: the presence draw and per-panel jitter draws are unchanged, so
+    # row count and order timestamps are byte-identical to the log-normal path.
+    qpack = _quantile_pack(
+        {
+            "creatinine": _BIMODAL_CREATININE,
+            "bun": [10.0] * 50 + [40.0] * 51,
+            "sodium": [138.0] * 50 + [142.0] * 51,
+        }
+    )
+    lpack = _pack()
+    sp = _spine([3] * 12, hid="Hs")
+    q = sample_labs(sp, qpack, np.random.default_rng(7))
+    lognormal = sample_labs(sp, lpack, np.random.default_rng(7))
+    assert [o.lab_order_dttm for o in q] == [o.lab_order_dttm for o in lognormal]
+    assert [o.lab_category for o in q] == [o.lab_category for o in lognormal]
+
+
 def test_no_icu_time_yields_no_labs() -> None:
     pack = _pack()
     ward_only = _spine([0, 1, 1, 0], hid="Hward")  # never reaches ICU threshold

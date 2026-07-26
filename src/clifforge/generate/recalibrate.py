@@ -21,9 +21,12 @@ targets are all *measured real quantities*, not free knobs:
   at the network median *without shortening the stay* and with a realistically
   spread acuity mix, the opposite of trimming the trajectory to hit a rate.
 * **Scale sojourns to real LOS.** Level dwell-times are scaled (on the fitted
-  distribution's scale parameter, preserving family and shape) so hospital and
-  ICU length-of-stay medians match the real cohort — which restores per-stay
-  measurement density as a side effect.
+  distribution's scale parameter, preserving family) so hospital and ICU
+  length-of-stay medians match the real cohort — which restores per-stay
+  measurement density as a side effect. A separate ``sojourn_shape_scale`` then
+  shrinks each log-normal level's log-scale ``sigma`` at fixed sojourn mean, pulling
+  the summed-LOS tails in toward the real cohort's spread without moving its median
+  (multiplying the scale alone leaves ``sigma`` — and so the fat tails — untouched).
 * **Scale peak mortality to the target network rate.**
 * **Decouple the organ-failure axes** so cardiovascular / renal support
   prevalence (vasopressors, CRRT) track their own real rates rather than the
@@ -42,6 +45,7 @@ edits operate on a deep copy; the input pack is never mutated (R22).
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any
 
 from clifforge.fit.estimators import DISCHARGE_STATE
@@ -73,6 +77,15 @@ _ROBUST_VITAL_SD: dict[str, float] = {
 #: as a corrupted (pre-robust-estimator) value and replaced; physiologic re-fit σ
 #: sits at ~1× and is left untouched, preserving its heteroscedasticity.
 _CORRUPT_SIGMA_FACTOR: float = 3.0
+
+#: Fraction of the mean-preserving scale bump applied when tightening a log-normal
+#: sojourn's shape (see :func:`_scale_sojourns`). At 1.0 the per-sojourn *mean* is
+#: held exactly, but summing many tightened (less-skewed) sojourns then pulls the
+#: LOS *median* up toward that fixed mean; under-compensating (< 1) trims the scale
+#: back so the summed-LOS median holds while the tails still contract. Measured
+#: against real CLIF-MIMIC: at full compensation the hospital-LOS median overshot
+#: ~165h→~193h, and 0.7 restores it (~163h) with tails tracking real.
+_SOJOURN_MEAN_COMPENSATION: float = 0.7
 
 
 def _renormalize(dist: dict[str, float]) -> None:
@@ -152,13 +165,29 @@ def _apply_peak_target(start_dist: dict[str, float], target: dict[str, float]) -
     _renormalize(start_dist)
 
 
-def _scale_sojourns(sojourn: dict[str, dict[str, Any]], multipliers: dict[str, float]) -> None:
-    """Scale each level's dwell-time mean by multiplying the fitted scale parameter.
+def _scale_sojourns(
+    sojourn: dict[str, dict[str, Any]],
+    multipliers: dict[str, float],
+    shape_scale: float = 1.0,
+) -> None:
+    """Scale each level's dwell-time and optionally tighten its multiplicative spread.
 
     Both fitted families (scipy ``lognorm`` / ``weibull_min``) carry their scale in
     ``params[2]`` with the location at ``params[1]``; the mean is proportional to
     that scale, so multiplying it scales the mean while preserving the fitted
     family and shape. ``mean_hours`` (metadata) is kept consistent.
+
+    ``shape_scale`` (< 1) then tightens each **log-normal** level's tails by
+    shrinking its log-scale ``sigma`` (``params[0]``) to ``shape_scale * sigma``.
+    A lognorm's mean is ``scale * exp(sigma**2 / 2)``, so ``scale`` is grown back by
+    ``exp(sigma**2 * (1 - shape_scale**2) / 2 * c)`` where ``c`` is
+    :data:`_SOJOURN_MEAN_COMPENSATION`; ``c == 1`` holds the per-sojourn mean exactly
+    but — because summing less-skewed sojourns lifts the median toward that mean —
+    overshoots the *summed* LOS median, so ``c`` under-compensates to keep it fixed.
+    Hospital LOS is a sum of per-level sojourns, so its median holds while its tails,
+    set by the per-sojourn multiplicative spread, contract; a plain ``params[2]``
+    multiply leaves ``sigma`` untouched and so cannot pull the tails in.
+    ``shape_scale == 1.0`` is an exact no-op; Weibull levels keep their fitted shape.
     """
     for level, mult in multipliers.items():
         block = sojourn.get(level)
@@ -170,6 +199,17 @@ def _scale_sojourns(sojourn: dict[str, dict[str, Any]], multipliers: dict[str, f
         mean = block.get("mean_hours")
         if isinstance(mean, int | float):
             block["mean_hours"] = mean * mult
+    if shape_scale == 1.0:
+        return
+    for block in sojourn.values():
+        if not str(block.get("family", "")).startswith("lognorm"):
+            continue
+        params = block.get("params")
+        if isinstance(params, list) and len(params) >= 3:
+            sigma = float(params[0])
+            params[0] = sigma * shape_scale
+            bump = sigma**2 * (1.0 - shape_scale**2) / 2.0 * _SOJOURN_MEAN_COMPENSATION
+            params[2] = float(params[2]) * math.exp(bump)
 
 
 def _expected_mortality(
@@ -250,6 +290,7 @@ def recalibrate_to_network_median(
     peak_target: dict[str, float] | None = None,
     disch_damp: float = 0.55,
     sojourn_multipliers: dict[str, float] | None = None,
+    sojourn_shape_scale: float = 0.6,
     mortality_scale: float = 0.66,
     mortality_target: float | None = None,
     flag_target_prevalence: dict[str, float] | None = None,
@@ -284,6 +325,7 @@ def recalibrate_to_network_median(
     _scale_sojourns(
         spine["support_level_sojourn"],
         sojourn_multipliers or {"1": 3.2, "2": 4.6, "3": 2.8, "4": 2.8},
+        shape_scale=sojourn_shape_scale,
     )
     # Mortality: scale peak-coupled expired rates. ``mortality_target`` (an exact
     # cohort in-hospital mortality) takes precedence — the scale is solved
