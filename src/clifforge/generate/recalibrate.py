@@ -254,6 +254,8 @@ def recalibrate_to_network_median(
     mortality_target: float | None = None,
     flag_target_prevalence: dict[str, float] | None = None,
     prone_prob_severe: float = 0.026,
+    niv_nippv_prob: float = 0.064,
+    niv_hfnc_prob: float = 0.069,
     vasopressor_cv_boost: float = 3.0,
     lab_panel_interval_hours: float = 12.0,
     lab_ward_panel_interval_hours: float = 18.0,
@@ -318,8 +320,15 @@ def recalibrate_to_network_median(
     # Length-aware generator paths: keep life-support *prevalence* a per-stay
     # property and restore lab volume once stays are realistically long.
     tables["adt"] = {"params": {"enrich_locations": False}}
+    # Non-invasive support (NIPPV / High Flow NC) is a low-prevalence per-stay
+    # property gated to real ICU rates, not minted for every ICU-floor stay; the
+    # gated path also keeps IMV to the intubation tier (level >= 3), so the floor
+    # never produces spurious ventilation.
     tables["respiratory_support"] = {
-        "params": {"enrich_devices": True, "l2_resp_noninvasive": True}
+        "params": {
+            "enrich_devices": True,
+            "niv": {"nippv_prob": niv_nippv_prob, "hfnc_prob": niv_hfnc_prob},
+        }
     }
     med = dict(tables.get("medication_admin_continuous", {}))
     med_params = dict(med.get("params", {}))

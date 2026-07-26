@@ -168,7 +168,8 @@ def test_derivative_rate_overrides_propagate() -> None:
 
 def test_generator_paths_enabled() -> None:
     out = recalibrate_to_network_median(_pack()).tables
-    assert out["respiratory_support"]["params"]["l2_resp_noninvasive"] is True
+    niv = out["respiratory_support"]["params"]["niv"]
+    assert niv["nippv_prob"] == 0.064 and niv["hfnc_prob"] == 0.069
     assert out["medication_admin_continuous"]["params"]["vasopressor_per_stay"] is True
     assert out["labs"]["params"]["ward_panel_interval_hours"] is not None
     assert out["spine"]["params"]["terminal_deterioration_hours"] == 24.0
@@ -312,6 +313,35 @@ def test_l2_resp_noninvasive_reserves_imv_for_intubation_tier() -> None:
     }
     assert "IMV" in dev_default
     assert "IMV" not in dev_gated
+
+
+def test_gated_niv_matches_target_prevalence_and_keeps_floor_low_flow() -> None:
+    # The gated path assigns non-invasive support once per stay at the target
+    # per-stay prevalence (not for every ICU-floor stay), keeps the floor baseline
+    # low-flow, and never mints IMV at level 2.
+    pack = ParamPack(
+        manifest={},
+        tables={
+            "spine": {"params": {"state_model": {"grid_step_hours": 1.0}}},
+            "respiratory_support": {"params": {"niv": {"nippv_prob": 0.10, "hfnc_prob": 0.15}}},
+        },
+    )
+    nippv = hfnc = imv = low_flow = 0
+    n = 800
+    for s in range(n):
+        sp = _spine_frame([2] * 8, resp=True, cv=False)
+        devs = {
+            r.device_category
+            for r in sample_respiratory_support(sp, pack, np.random.default_rng(s))
+        }
+        nippv += "NIPPV" in devs
+        hfnc += "High Flow NC" in devs
+        imv += "IMV" in devs
+        low_flow += bool({"Nasal Cannula", "Face Mask"} & devs)
+    assert 0.07 < nippv / n < 0.13  # ~0.10 target prevalence
+    assert 0.11 < hfnc / n < 0.19  # ~0.15 target prevalence
+    assert imv == 0  # ICU floor never mints ventilation
+    assert low_flow / n > 0.7  # most floor stays are low-flow, not non-invasive
 
 
 def test_vasopressor_per_stay_confines_pressors_to_cv_stays() -> None:
