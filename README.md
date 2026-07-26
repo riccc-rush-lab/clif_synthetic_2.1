@@ -144,6 +144,15 @@ configured fraction, which is indistinguishable from a correct split. For that
 reason `assert_holdout_disjoint` refuses to run until the caller passes
 `ids_share_fit_namespace=True`, affirming the one thing only they can verify.
 
+### Validation report
+
+A [synthetic-vs-real validation report](https://claude.ai/code/artifact/d72f6a8d-b209-469d-82ad-b99d2b9c3cc1)
+compares a generated master dataset against a real staged CLIF reference across
+missingness, length-of-stay, life-support rates, mortality, and the longitudinal
+illness trajectory (MAP falling and creatinine rising toward death). It documents
+what matches by design and what is intentionally different (demographics, age,
+network-median mortality).
+
 ## Status
 
 The fit and generate stages and all three evaluation surfaces are implemented;
