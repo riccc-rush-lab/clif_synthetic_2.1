@@ -42,14 +42,16 @@ def id_column() -> pa.Column:
 
 
 def numeric_id_column() -> pa.Column:
-    """Required, non-nullable analyst-facing identifier — ``patient_id`` /
-    ``hospitalization_id`` / ``hospitalization_joined_id``.
+    """Required, non-nullable **integer** identifier — ``patient_id`` /
+    ``hospitalization_id`` / ``hospitalization_joined_id`` — the hardcoded id-type
+    rule (see ``generate._common.enforce_numeric_ids``).
 
-    The generator emits these as ``Int64`` (not the CLIF dictionary's nominal
-    VARCHAR) so they load as numbers — not strings, with no leading zeros — in
-    Python, R, and Stata, the way analysts join on them. The dtype is left
-    unconstrained (integer *or* string both validate) so this is the referential
-    backbone (R8, present + non-null) without pinning the id to one representation."""
+    The generator emits these as ``Int64`` (the hardcoded id-type rule in
+    ``generate._common.enforce_numeric_ids``, applied to every table) so they load as
+    numbers — no leading zeros, no string coercion — in Python, R, and Stata. The
+    schema keeps the referential backbone (present + non-null, R8) without pinning the
+    dtype, so the always-integer output and any string-built test frame both validate;
+    other id columns (``device_id``, ``provider_id``, …) stay strings."""
     return pa.Column(nullable=False, required=True)
 
 
