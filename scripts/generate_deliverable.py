@@ -59,7 +59,6 @@ from clifforge.generate.recalibrate import (
     recalibrate_to_network_median,
 )
 
-CHUNK = 8_000
 BASE_SEED = 2025
 
 
@@ -111,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", required=True, help="Output directory for the dataset.")
     ap.add_argument("--n", type=int, default=85_248, help="Number of encounters (size).")
     ap.add_argument(
+        "--chunk-size",
+        type=int,
+        default=8_000,
+        help="Encounters per streamed chunk (RAM dial; smaller uses less memory). Default 8000.",
+    )
+    ap.add_argument(
         "--full-hospital",
         action="store_true",
         help="Generate the full hospital population (ward/ED/stepdown/ICU mix) instead "
@@ -146,18 +151,19 @@ def main(argv: list[str] | None = None) -> int:
 
     pack = _build_pack(args)
 
-    n_chunks = (args.n + CHUNK - 1) // CHUNK
+    chunk = args.chunk_size
+    n_chunks = (args.n + chunk - 1) // chunk
     table_names: list[str] = []
     for c in range(n_chunks):
-        size = min(CHUNK, args.n - c * CHUNK)
-        ds = generate_dataset(pack, n_patients=size, seed=BASE_SEED + c, id_offset=c * CHUNK)
+        size = min(chunk, args.n - c * chunk)
+        ds = generate_dataset(pack, n_patients=size, seed=BASE_SEED + c, id_offset=c * chunk)
         for name, frame in ds.tables.items():
             (parts / name).mkdir(exist_ok=True)
             frame.write_parquet(parts / name / f"chunk_{c:03d}.parquet")
         (parts / "truth").mkdir(exist_ok=True)
         ds.truth.write_parquet(parts / "truth" / f"chunk_{c:03d}.parquet")
         table_names = list(ds.tables.keys())
-        print(f"chunk {c + 1}/{n_chunks} ({min((c + 1) * CHUNK, args.n):,}/{args.n:,})", flush=True)
+        print(f"chunk {c + 1}/{n_chunks} ({min((c + 1) * chunk, args.n):,}/{args.n:,})", flush=True)
 
     total = 0
     for name in [*table_names, "truth"]:

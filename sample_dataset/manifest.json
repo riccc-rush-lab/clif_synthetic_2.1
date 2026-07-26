@@ -5,6 +5,7 @@
     "n": 85248,
     "seed": 2025,
     "base_pack": null,
+    "mode": "icu",
     "age_shift": 0.0,
     "hispanic_frac": null,
     "race_target": null,
@@ -90,7 +91,7 @@
     },
     "clif_truth": {
       "rows": 2195057,
-      "sha256": "f2e3a970f2c7d1162bbc5a6e16d80fd72e934e98ffcf53e475ed8b2a2707ca07"
+      "sha256": "9c5583e106bceba64aa48f6650d3473620f3e12530bce132db336cfe3522bb16"
     },
     "clif_vitals": {
       "rows": 7617292,

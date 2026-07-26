@@ -78,6 +78,33 @@ Output is one `clif_<table>.parquet` per table, plus `clif_truth.parquet` — th
 latent acuity spine behind each encounter, which makes the dataset usable as a
 benchmark with free ground-truth labels.
 
+## System requirements
+
+Generation is CPU + RAM bound (**no GPU**) and runs on an ordinary laptop. Two
+flags let you trade a smaller footprint for a little more wall-clock, so **any
+size cohort runs on any machine** — a bigger cohort just takes longer, not more
+memory:
+
+- **`--chunk-size N`** — the **RAM dial**. Cohorts larger than `N` are generated in
+  bounded-memory batches streamed to disk, so peak memory tracks the *chunk*, not
+  the cohort size. Output is identical regardless of the value. Measured peak RAM
+  (ICU cohort, the heaviest): **~1.9 GB at `--chunk-size 2000`**, **~5.3 GB at the
+  default `10000`**. Whole-hospital stays are lighter (shorter LOS → fewer rows per
+  encounter), so they use less.
+- **`--max-threads N`** — the **compute dial**. Caps CPU threads so generation
+  doesn't claim every core on a shared or low-core machine (also settable via the
+  `POLARS_MAX_THREADS` environment variable).
+
+| Machine | Suggested flags |
+|---|---|
+| 8 GB RAM / few cores | `--chunk-size 2000 --max-threads 4` (~2 GB peak) |
+| 16 GB+ | defaults are fine |
+| Generating a large master | any `--n-patients`; peak RAM stays at the chunk footprint |
+
+As a rough guide, a full 365k whole-hospital population takes ~20–30 min on a
+modern multi-core machine; smaller cohorts scale down proportionally. Disk: the
+ICU cohort is ~13 KB/encounter, the whole-hospital population ~3.5 KB/encounter.
+
 ## Data available off the shelf
 
 Everything below is **fully synthetic, CLIF 2.1-conformant, and committed to the
