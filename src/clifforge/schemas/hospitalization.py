@@ -15,9 +15,9 @@ from clifforge.schemas import base
 
 SCHEMA: pa.DataFrameSchema = pa.DataFrameSchema(
     {
-        "patient_id": base.id_column(),
-        "hospitalization_id": base.id_column(),
-        "hospitalization_joined_id": base.id_column(),
+        "patient_id": base.numeric_id_column(),
+        "hospitalization_id": base.numeric_id_column(),
+        "hospitalization_joined_id": base.numeric_id_column(),
         "admission_dttm": base.utc_datetime(),
         "discharge_dttm": base.utc_datetime(),
         "age_at_admission": base.integer(),

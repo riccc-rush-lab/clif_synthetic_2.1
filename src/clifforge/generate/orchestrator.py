@@ -159,6 +159,35 @@ def _admit_dttm(rng: np.random.Generator) -> datetime:
     return _CALENDAR_START + timedelta(seconds=int(rng.integers(0, _CALENDAR_SPAN_SECONDS)))
 
 
+#: patient_id is shifted into this disjoint high range so it never numerically
+#: collides with hospitalization_id (both derive from the same encounter index).
+_PATIENT_ID_OFFSET = 1_000_000_000
+
+
+def _numeric_ids(frame: pl.DataFrame) -> pl.DataFrame:
+    """Cast the analyst-facing ids to ``Int64`` — the last step before a frame is
+    gated/written.
+
+    Internally ids are prefixed strings (``H{i}`` / ``P{i}``); the public columns
+    ``hospitalization_id``, ``hospitalization_joined_id``, and ``patient_id`` are
+    emitted as integers (prefix stripped, 1-based, ``patient_id`` in a disjoint
+    range) so they load as numbers with no leading zeros in Python / R / Stata.
+    Other id columns (``device_id``, ``provider_id``, ``med_order_id``, …) stay
+    strings. A column already integer (idempotent re-application) is left as is.
+    """
+    exprs = []
+    for col in ("hospitalization_id", "hospitalization_joined_id"):
+        if col in frame.columns and frame.schema[col] == pl.String:
+            exprs.append((pl.col(col).str.strip_prefix("H").cast(pl.Int64) + 1).alias(col))
+    if "patient_id" in frame.columns and frame.schema["patient_id"] == pl.String:
+        exprs.append(
+            (
+                pl.col("patient_id").str.strip_prefix("P").cast(pl.Int64) + 1 + _PATIENT_ID_OFFSET
+            ).alias("patient_id")
+        )
+    return frame.with_columns(exprs) if exprs else frame
+
+
 def generate_dataset(
     pack: ParamPack,
     *,
@@ -180,7 +209,7 @@ def generate_dataset(
 
     child_seeds = np.random.SeedSequence(seed).spawn(n_patients)
     tables, spines = _generate_frames(pack, child_seeds, id_offset)
-    return GeneratedDataset(tables=tables, truth=truth_frame(spines))
+    return GeneratedDataset(tables=tables, truth=_numeric_ids(truth_frame(spines)))
 
 
 def _generate_frames(
@@ -225,6 +254,8 @@ def _generate_frames(
     for name, _sample_fn, frame_fn, _id_kwarg in _TABLE_REGISTRY:
         tables[name] = frame_fn(acc[name])
 
+    # Emit integer patient/hospitalization ids (Python/R/Stata-friendly), then gate.
+    tables = {name: _numeric_ids(frame) for name, frame in tables.items()}
     for name, frame in tables.items():
         gate.validate(frame, name, run_secondary=False)  # raises ConformanceError (R25)
     return tables, spines
@@ -288,7 +319,7 @@ def generate_streaming(
     for c in range(n_chunks):
         lo, hi = c * chunk_size, min((c + 1) * chunk_size, n_patients)
         tables, spines = _generate_frames(pack, child_seeds[lo:hi], id_offset + lo)
-        batch = {**tables, "truth": truth_frame(spines)} if write_truth else tables
+        batch = {**tables, "truth": _numeric_ids(truth_frame(spines))} if write_truth else tables
         for name, frame in batch.items():
             (parts / name).mkdir(parents=True, exist_ok=True)
             frame.write_parquet(parts / name / f"part_{c:05d}.parquet")

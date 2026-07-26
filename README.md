@@ -112,6 +112,12 @@ Output is one `clif_<table>.parquet` per table, plus `clif_truth.parquet` — th
 latent acuity spine behind each encounter, which makes the dataset usable as a
 benchmark with free ground-truth labels.
 
+`patient_id`, `hospitalization_id`, and `hospitalization_joined_id` are emitted as
+**integers** (not the CLIF dictionary's nominal VARCHAR), so they load as numbers —
+no leading zeros, no string coercion — in Python, R, and Stata, the way analysts
+join on them. `patient_id` sits in a disjoint range so it never collides with
+`hospitalization_id`; other id columns (`device_id`, `provider_id`, …) stay strings.
+
 ## System requirements
 
 Generation is CPU + RAM bound (**no GPU**) and runs on an ordinary laptop. Two

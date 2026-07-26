@@ -37,8 +37,20 @@ _BOOL_DTYPES = {"BOOLEAN", "BOOL"}
 
 
 def id_column() -> pa.Column:
-    """Required, non-nullable identifier column (referential-integrity backbone, R8)."""
+    """Required, non-nullable string identifier column (device/provider/order ids)."""
     return pa.Column(str, nullable=False, required=True)
+
+
+def numeric_id_column() -> pa.Column:
+    """Required, non-nullable analyst-facing identifier — ``patient_id`` /
+    ``hospitalization_id`` / ``hospitalization_joined_id``.
+
+    The generator emits these as ``Int64`` (not the CLIF dictionary's nominal
+    VARCHAR) so they load as numbers — not strings, with no leading zeros — in
+    Python, R, and Stata, the way analysts join on them. The dtype is left
+    unconstrained (integer *or* string both validate) so this is the referential
+    backbone (R8, present + non-null) without pinning the id to one representation."""
+    return pa.Column(nullable=False, required=True)
 
 
 def string(*, required: bool = False, nullable: bool = True) -> pa.Column:

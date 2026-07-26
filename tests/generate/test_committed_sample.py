@@ -33,7 +33,7 @@ def test_committed_sample_reproduces_from_its_recipe() -> None:
         .tables["hospitalization"]
         .sort("hospitalization_id")
     )
-    ids = [f"H{i}" for i in range(30)]
+    ids = list(range(1, 31))  # 1-based int hospitalization ids
     committed = (
         pl.read_parquet(_SAMPLE / "clif_hospitalization.parquet")
         .filter(pl.col("hospitalization_id").is_in(ids))
@@ -48,7 +48,7 @@ def test_committed_sample_reproduces_from_its_recipe() -> None:
 )
 def test_committed_full_hospital_sample_reproduces_from_its_recipe() -> None:
     # Same reproducibility contract as the ICU sample, but through the
-    # ``mode = "full_hospital"`` spec path: regenerating H0..H29 from the committed
+    # ``mode = "full_hospital"`` spec path: regenerating the first 30 encounters from the committed
     # base pack + spec + seed must match the committed full-hospital sample.
     spec = load_spec(_FULL_SAMPLE / "spec.toml")
     pack = spec_to_pack(spec, ParamPack.load(str(_BASE)))
@@ -57,7 +57,7 @@ def test_committed_full_hospital_sample_reproduces_from_its_recipe() -> None:
         .tables["hospitalization"]
         .sort("hospitalization_id")
     )
-    ids = [f"H{i}" for i in range(30)]
+    ids = list(range(1, 31))  # 1-based int hospitalization ids
     committed = (
         pl.read_parquet(_FULL_SAMPLE / "clif_hospitalization.parquet")
         .filter(pl.col("hospitalization_id").is_in(ids))
