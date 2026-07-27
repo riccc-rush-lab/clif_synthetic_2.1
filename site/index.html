@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLIFForge — Synthetic CLIF Datasets</title>
+<style>
+  :root {
+    --ink: #0d1b24;
+    --ink-2: #16303d;
+    --surface: #f7f8f7;
+    --surface-2: #ffffff;
+    --card: #ffffff;
+    --line: #dde3e3;
+    --text: #14242c;
+    --text-soft: #4d6069;
+    --teal: #14867e;
+    --teal-deep: #0d5f59;
+    --teal-soft: #e3f1ef;
+    --amber: #c47a2c;
+    --amber-soft: #f6ecdd;
+    --trace: rgba(20, 134, 126, 0.55);
+    --hero-text: #eef4f3;
+    --hero-text-soft: #9fc0bb;
+    --radius: 14px;
+    --maxw: 1080px;
+    --serif: "Iowan Old Style", "Palatino Linotype", "Palatino", "Georgia", ui-serif, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #0b161c;
+      --surface-2: #0f1e26;
+      --card: #12232c;
+      --line: #223a44;
+      --text: #e7eeed;
+      --text-soft: #9db1b6;
+      --teal: #4bb7ad;
+      --teal-deep: #2b9d94;
+      --teal-soft: #123430;
+      --amber: #d99a4e;
+      --amber-soft: #2e2416;
+      --trace: rgba(75, 183, 173, 0.6);
+      --hero-text: #eef4f3;
+      --hero-text-soft: #9fc0bb;
+    }
+  }
+  :root[data-theme="light"] {
+    --surface: #f7f8f7; --surface-2: #ffffff; --card: #ffffff; --line: #dde3e3;
+    --text: #14242c; --text-soft: #4d6069; --teal: #14867e; --teal-deep: #0d5f59;
+    --teal-soft: #e3f1ef; --amber: #c47a2c; --amber-soft: #f6ecdd;
+    --trace: rgba(20,134,126,0.55);
+  }
+  :root[data-theme="dark"] {
+    --surface: #0b161c; --surface-2: #0f1e26; --card: #12232c; --line: #223a44;
+    --text: #e7eeed; --text-soft: #9db1b6; --teal: #4bb7ad; --teal-deep: #2b9d94;
+    --teal-soft: #123430; --amber: #d99a4e; --amber-soft: #2e2416;
+    --trace: rgba(75,183,173,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+    font-family: var(--sans); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.12;
+    text-wrap: balance; letter-spacing: -0.01em; }
+  a { color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { a { color: var(--teal); } }
+  :root[data-theme="dark"] a { color: var(--teal); }
+  code, .mono { font-family: var(--mono); }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; overflow: hidden;
+    background: radial-gradient(120% 140% at 15% 0%, var(--ink-2) 0%, var(--ink) 60%);
+    color: var(--hero-text); border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .hero canvas { position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0.5; pointer-events: none; }
+  .hero .wrap { position: relative; padding: 88px 24px 76px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--hero-text-soft); margin: 0 0 20px; }
+  .hero h1 { font-size: clamp(2.3rem, 5.4vw, 3.9rem); margin: 0 0 20px; color: var(--hero-text); }
+  .hero h1 .accent { color: var(--teal); }
+  .hero .lede { font-size: clamp(1.05rem, 2.1vw, 1.3rem); max-width: 40ch;
+    color: var(--hero-text-soft); margin: 0 0 34px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 14px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px;
+    border-radius: 10px; font-weight: 600; text-decoration: none; font-size: 0.98rem;
+    border: 1px solid transparent; transition: transform .12s ease, background .12s ease; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--teal); color: #04231f; }
+  .btn-primary:hover { background: #2ba79c; }
+  .btn-ghost { background: rgba(255,255,255,0.06); color: var(--hero-text);
+    border-color: rgba(255,255,255,0.18); }
+  .btn-ghost:hover { background: rgba(255,255,255,0.12); }
+  .hero-badges { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 40px 0 0;
+    font-size: 0.86rem; color: var(--hero-text-soft); font-family: var(--mono); }
+  .hero-badges span { display: inline-flex; align-items: center; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+
+  /* ---------- sections ---------- */
+  section { padding: 68px 0; }
+  .section-label { font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--teal-deep); margin: 0 0 12px; }
+  @media (prefers-color-scheme: dark) { .section-label { color: var(--teal); } }
+  :root[data-theme="dark"] .section-label { color: var(--teal); }
+  h2 { font-size: clamp(1.6rem, 3.4vw, 2.3rem); margin: 0 0 14px; }
+  .section-intro { color: var(--text-soft); max-width: 60ch; font-size: 1.05rem; margin: 0 0 36px; }
+  .section-link { display: inline-block; margin-top: 8px; font-weight: 600; text-decoration: none; }
+  .section-link:hover { text-decoration: underline; }
+
+  /* two ways */
+  .ways { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .way { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 30px; position: relative; }
+  .way .num { font-family: var(--mono); font-size: 13px; color: var(--teal-deep);
+    letter-spacing: 0.1em; }
+  @media (prefers-color-scheme: dark) { .way .num { color: var(--teal); } }
+  :root[data-theme="dark"] .way .num { color: var(--teal); }
+  .way h3 { font-size: 1.4rem; margin: 8px 0 12px; }
+  .way p { color: var(--text-soft); margin: 0 0 16px; }
+  .way pre { margin: 0; }
+  pre { background: var(--ink); color: #d7e6e3; border-radius: 10px; padding: 16px 18px;
+    overflow-x: auto; font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; }
+  pre .c { color: #7fa7a0; }
+  pre .k { color: #6fd0c4; }
+
+  /* real strip */
+  .real { background: var(--surface-2); border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line); }
+  .real-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+  .feat { display: flex; gap: 14px; }
+  .feat .ic { flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--teal-soft);
+    display: grid; place-items: center; color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { .feat .ic { color: var(--teal); } }
+  :root[data-theme="dark"] .feat .ic { color: var(--teal); }
+  .feat h3 { font-family: var(--sans); font-size: 1.02rem; font-weight: 700; margin: 3px 0 5px;
+    letter-spacing: 0; }
+  .feat p { margin: 0; color: var(--text-soft); font-size: 0.95rem; }
+
+  /* levers table */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; min-width: 460px; }
+  th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  th { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-soft); background: var(--surface-2); }
+  tr:last-child td { border-bottom: none; }
+  td.lever { font-weight: 650; }
+  td .tag { font-family: var(--mono); font-size: 0.8rem; color: var(--teal-deep); }
+  @media (prefers-color-scheme: dark) { td .tag { color: var(--teal); } }
+  :root[data-theme="dark"] td .tag { color: var(--teal); }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; }
+  .stat .n { font-family: var(--serif); font-size: 2rem; color: var(--teal-deep); font-weight: 600;
+    font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) { .stat .n { color: var(--teal); } }
+  :root[data-theme="dark"] .stat .n { color: var(--teal); }
+  .stat .l { font-size: 0.88rem; color: var(--text-soft); margin-top: 4px; }
+
+  /* versions */
+  .versions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .ver { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; }
+  .ver .badge { display: inline-block; font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px;
+    margin-bottom: 12px; }
+  .badge.now { background: var(--teal-soft); color: var(--teal-deep); }
+  .badge.next { background: var(--amber-soft); color: var(--amber); }
+  .badge.future { background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--line); }
+  @media (prefers-color-scheme: dark) { .badge.now { color: var(--teal); } }
+  :root[data-theme="dark"] .badge.now { color: var(--teal); }
+  .ver h3 { font-family: var(--sans); font-size: 1.15rem; margin: 0 0 8px; letter-spacing: 0; }
+  .ver p { margin: 0; color: var(--text-soft); font-size: 0.93rem; }
+
+  /* footer cta */
+  .foot { background: linear-gradient(120% 140% at 85% 0%, var(--ink-2), var(--ink));
+    color: var(--hero-text); text-align: center; }
+  .foot h2 { color: var(--hero-text); }
+  .foot p { color: var(--hero-text-soft); max-width: 52ch; margin: 0 auto 28px; }
+  .foot .cta-row { justify-content: center; }
+  .cite { margin-top: 40px; font-family: var(--mono); font-size: 0.78rem;
+    color: var(--hero-text-soft); border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 22px; }
+  .note { color: var(--text-soft); font-size: 0.85rem; margin-top: 14px; font-style: italic; }
+
+  @media (max-width: 760px) {
+    .ways, .real-grid, .stats, .versions { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .hero .wrap { padding: 64px 24px 54px; }
+    section { padding: 52px 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .hero canvas { display: none; } }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <canvas id="trace" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <p class="eyebrow">For the CLIF Consortium · Fully synthetic · Openly shareable</p>
+    <h1>Realistic CLIF datasets,<br><span class="accent">safe to share.</span></h1>
+    <p class="lede">Use the ready-made data, or pull the levers and generate your own —
+      clinically realistic, CLIF-conformant, and provably synthetic. No credential.
+      No data-use agreement.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/riccc-rush-lab/clif_synthetic_2.1">View the repository →</a>
+      <a class="btn btn-ghost" href="#two-ways">See how it works</a>
+    </div>
+    <div class="hero-badges">
+      <span><i class="dot"></i>CLIF 2.1 today</span>
+      <span><i class="dot"></i>ICU + whole-hospital</span>
+      <span><i class="dot"></i>Runs on a laptop</span>
+      <span><i class="dot"></i>MIT licensed</span>
+    </div>
+  </div>
+</header>
+
+<section id="two-ways">
+  <div class="wrap">
+    <p class="section-label">Two ways to use it</p>
+    <h2>Take the data — or make the data</h2>
+    <p class="section-intro">Every CLIFForge dataset is both a finished product and a
+      recipe. Grab what's shipped, or change the recipe and generate a cohort that's
+      yours.</p>
+    <div class="ways">
+      <div class="way">
+        <span class="num">01</span>
+        <h3>Use the ready-made datasets</h3>
+        <p>Realistic, CLIF 2.1-conformant samples are committed in the repo — an ICU
+          cohort and a whole-hospital population. Full-size masters (85k ICU, 365k
+          whole-hospital) are published for direct download. Clone and go.</p>
+<pre><span class="c"># clone and inspect — no credential, no fit</span>
+git clone https://github.com/riccc-rush-lab/clif_synthetic_2.1.git</pre>
+      </div>
+      <div class="way">
+        <span class="num">02</span>
+        <h3>Pull the levers, make your own</h3>
+        <p>Install the package, edit a short recipe, and generate a <em>distinct</em>
+          cohort that still looks like the real thing. No two recipes produce the same
+          data — and every one is reproducible from its recipe.</p>
+<pre><span class="c"># install and generate your own cohort</span>
+pip install git+https://github.com/riccc-rush-lab/clif_synthetic_2.1.git
+clif-forge generate <span class="k">--preset</span> high-acuity <span class="k">--n-patients</span> 5000 <span class="k">--out</span> ./my-icu</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="real">
+  <div class="wrap">
+    <p class="section-label">Real, not random</p>
+    <h2>Why the data looks like the real thing</h2>
+    <p class="section-intro">CLIFForge fits distributions, couplings, and patient
+      trajectories to <em>aggregate</em> CLIF statistics, then samples offline from a
+      versioned parameter pack. It lands in the real statistical region while staying
+      provably synthetic.</p>
+    <div class="real-grid">
+      <div class="feat">
+        <div class="ic">◔</div>
+        <div><h3>Empirical value shapes</h3>
+          <p>Labs use an empirical-quantile marginal through a Gaussian copula, so skewed,
+            long-tailed distributions (creatinine's kidney tail, lactate's skew) match real —
+            not just their means.</p></div>
+      </div>
+      <div class="feat">
+        <div class="ic">⋯</div>
+        <div><h3>Real missingness</h3>
+          <p>Per-stay lab presence is correlated, so co-ordered panels — a metabolic panel,
+            an arterial blood gas — are measured together rather than independently.</p></div>
+      </div>
+      <div class="feat">
+        <div class="ic">↗</div>
+        <div><h3>Real trajectories</h3>
+          <p>Length-of-stay tails, organ support, and a deterioration-toward-death course
+            (falling pressure, rising creatinine) track the real cohort — with realistic
+            ER/OR/transfer patient flow.</p></div>
+      </div>
+      <div class="feat">
+        <div class="ic">🔒</div>
+        <div><h3>Private by construction</h3>
+          <p>Generation samples from aggregate parameters and never copies a record. No
+            synthetic patient traces back to a real one — verified with distance-to-closest-record
+            and identifiability metrics.</p></div>
+      </div>
+    </div>
+    <a class="section-link" href="validation.html">Read the full synthetic-vs-real validation report →</a>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="section-label">The levers</p>
+    <h2>What you control</h2>
+    <p class="section-intro">Change any lever and get a new, still-clinically-realistic,
+      still-conformant dataset. Finer knobs are on the Python API.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Lever</th><th>What it changes</th><th>Set with</th></tr></thead>
+        <tbody>
+          <tr><td class="lever">Population shape</td><td>ICU cohort vs. whole-hospital population</td><td><span class="tag">mode</span></td></tr>
+          <tr><td class="lever">Size</td><td>Any number of encounters, on any machine</td><td><span class="tag">n</span></td></tr>
+          <tr><td class="lever">Demographics</td><td>Age shift, Hispanic fraction, exact race mix</td><td><span class="tag">age_shift, race_target</span></td></tr>
+          <tr><td class="lever">Illness rates</td><td>Ventilation, mortality, vasopressors, CRRT, proning</td><td><span class="tag">imv, mortality_scale…</span></td></tr>
+          <tr><td class="lever">Patient flow</td><td>Admission mix, ward→ICU and outside-hospital→ICU transfers</td><td><span class="tag">admission_route</span></td></tr>
+          <tr><td class="lever">Compute footprint</td><td>RAM and CPU dials — any cohort runs on an ordinary laptop</td><td><span class="tag">--chunk-size, --max-threads</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="real">
+  <div class="wrap">
+    <p class="section-label">At a glance</p>
+    <h2>What ships today</h2>
+    <div class="stats" style="margin-top:28px">
+      <div class="stat"><div class="n">85k</div><div class="l">encounter ICU cohort master</div></div>
+      <div class="stat"><div class="n">365k</div><div class="l">whole-hospital population master</div></div>
+      <div class="stat"><div class="n">19</div><div class="l">CLIF tables generated &amp; gated</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">real records in the output</div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="section-label">CLIF versions &amp; roadmap</p>
+    <h2>One engine, every CLIF version</h2>
+    <p class="section-intro">CLIFForge is versioned to the CLIF standard it emits and is
+      schema-driven — so a new version is a refit step, not a rewrite. The version each
+      dataset targets is recorded in its manifest.</p>
+    <div class="versions">
+      <div class="ver">
+        <span class="badge now">Available now</span>
+        <h3>CLIF 2.1</h3>
+        <p>Schemas, mCIDE, and the fitted base pack all target 2.1. Every dataset here is
+          2.1-conformant.</p>
+      </div>
+      <div class="ver">
+        <span class="badge next">Planned</span>
+        <h3>CLIF 3.0</h3>
+        <p>Lands once 3.0 is finalized and there's aggregate data to fit it to — vendor the
+          dictionary, refit, ship.</p>
+      </div>
+      <div class="ver">
+        <span class="badge future">Ahead</span>
+        <h3>Future versions</h3>
+        <p>The same path for every version, so the consortium has one place to pull synthetic
+          data for whichever CLIF version a study needs.</p>
+      </div>
+    </div>
+    <p class="note">A single home for the datasets is planned at clif-icu.com (not yet live).</p>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap" style="padding:76px 24px">
+    <h2>Start with the data.</h2>
+    <p>Clone the repo to inspect the ready-made datasets, or install the package and
+      generate your own. Feedback, issues, and preset contributions are welcome.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/riccc-rush-lab/clif_synthetic_2.1">Open the repository →</a>
+    </div>
+    <p class="cite">Rojas, J.C. CLIFForge: A fully synthetic CLIF dataset generator (v0.1.0), 2026.
+      MIT licensed. github.com/riccc-rush-lab/clif_synthetic_2.1</p>
+  </div>
+</footer>
+
+<script>
+  // Subtle physiologic vitals trace in the hero (paused under reduced-motion via CSS display:none).
+  (function () {
+    var c = document.getElementById('trace');
+    if (!c) return;
+    var ctx = c.getContext('2d');
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w, h;
+    function size() {
+      var r = c.getBoundingClientRect();
+      w = r.width; h = r.height;
+      c.width = w * dpr; c.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    size();
+    window.addEventListener('resize', size);
+    var col = getComputedStyle(document.documentElement).getPropertyValue('--trace').trim() || 'rgba(20,134,126,0.5)';
+    var t = 0;
+    // one ECG-like beat as a function of phase p in [0,1)
+    function beat(p) {
+      if (p < 0.10) return Math.sin(p / 0.10 * Math.PI) * 0.10;      // P wave
+      if (p < 0.16) return 0;
+      if (p < 0.19) return -0.12;                                     // Q
+      if (p < 0.23) return 1.0;                                       // R spike
+      if (p < 0.27) return -0.30;                                     // S
+      if (p < 0.45) return 0;
+      if (p < 0.62) return Math.sin((p - 0.45) / 0.17 * Math.PI) * 0.22; // T wave
+      return 0;
+    }
+    function frame() {
+      ctx.clearRect(0, 0, w, h);
+      var rows = 3;
+      for (var r = 0; r < rows; r++) {
+        var baseY = h * (0.30 + r * 0.22);
+        var amp = h * 0.16 * (1 - r * 0.18);
+        var speed = 0.5 + r * 0.14;
+        var period = 150 + r * 40;
+        ctx.beginPath();
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = 0.9 - r * 0.22;
+        for (var x = 0; x <= w; x += 2) {
+          var phase = (((x + t * speed) % period) / period);
+          var y = baseY - beat(phase) * amp;
+          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      t += 1.4;
+      requestAnimationFrame(frame);
+    }
+    frame();
+  })();
+</script>
+</body>
+</html>

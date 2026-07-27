@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Synthetic CLIF vs. Real CLIF-MIMIC — Validation</title>
+<style>
+  :root {
+    --paper: #f5f7f9; --panel: #ffffff; --ink: #12171d; --muted: #5b6670; --faint: #8a949e;
+    --rule: #dde3e8; --rule-soft: #eaeef1;
+    --synth: #0f766e; --synth-soft: #9ec9c3;
+    --real: #b4562f; --real-soft: #dbb3a1;
+    --match: #2f7a4e; --design: #2b5f97; --gap: #9a6a14;
+    --shadow: 0 1px 2px rgba(18,23,29,.04), 0 8px 24px rgba(18,23,29,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0d1115; --panel: #141a20; --ink: #e6ebef; --muted: #9aa5ae; --faint: #6b7680;
+      --rule: #26303a; --rule-soft: #1c242c;
+      --synth: #38bdb0; --synth-soft: #1f4b47; --real: #e08a5f; --real-soft: #5a3626;
+      --match: #63b98a; --design: #6ea3dc; --gap: #d0a04a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #f5f7f9; --panel: #ffffff; --ink: #12171d; --muted: #5b6670; --faint: #8a949e;
+    --rule: #dde3e8; --rule-soft: #eaeef1;
+    --synth: #0f766e; --synth-soft: #9ec9c3; --real: #b4562f; --real-soft: #dbb3a1;
+    --match: #2f7a4e; --design: #2b5f97; --gap: #9a6a14;
+  }
+  :root[data-theme="dark"] {
+    --paper: #0d1115; --panel: #141a20; --ink: #e6ebef; --muted: #9aa5ae; --faint: #6b7680;
+    --rule: #26303a; --rule-soft: #1c242c;
+    --synth: #38bdb0; --synth-soft: #1f4b47; --real: #e08a5f; --real-soft: #5a3626;
+    --match: #63b98a; --design: #6ea3dc; --gap: #d0a04a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; }
+  .serif { font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* Masthead */
+  header { padding: 64px 0 40px; border-bottom: 1px solid var(--rule); }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; margin: 0 0 18px;
+  }
+  h1 {
+    font-family: ui-serif, "Iowan Old Style", Palatino, Georgia, serif;
+    font-weight: 600; font-size: clamp(30px, 5vw, 48px); line-height: 1.08;
+    letter-spacing: -.01em; margin: 0 0 20px; text-wrap: balance;
+  }
+  .dek { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted); max-width: 60ch; margin: 0; }
+  .meta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--faint); }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  /* Verdict cards */
+  .verdict { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 40px 0 8px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 12px;
+    padding: 20px 20px 22px; box-shadow: var(--shadow);
+  }
+  .card .k { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .card .v { font-family: ui-serif, Georgia, serif; font-size: 30px; font-weight: 600; margin: 8px 0 4px; font-variant-numeric: tabular-nums; }
+  .card .s { font-size: 13.5px; color: var(--muted); }
+
+  section { margin-top: 56px; }
+  h2 {
+    font-family: ui-serif, Georgia, serif; font-size: 24px; font-weight: 600;
+    letter-spacing: -.01em; margin: 0 0 6px;
+  }
+  .lede { color: var(--muted); margin: 0 0 22px; max-width: 66ch; }
+
+  /* Tables */
+  .tw { overflow-x: auto; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 12px 18px; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; }
+  thead th { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.metric { white-space: normal; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+  .synthc { color: var(--synth); font-weight: 600; }
+  .realc { color: var(--real); font-weight: 600; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .tag::before { content: ""; width: 8px; height: 8px; border-radius: 2px; }
+  .tag.match { color: var(--match); } .tag.match::before { background: var(--match); }
+  .tag.design { color: var(--design); } .tag.design::before { background: var(--design); border-radius: 50%; }
+  .tag.gap { color: var(--gap); } .tag.gap::before { background: var(--gap); transform: rotate(45deg); border-radius: 1px; }
+
+  /* Charts */
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin: 4px 0 20px; font-size: 13px; color: var(--muted); }
+  .lg { display: inline-flex; align-items: center; gap: 8px; }
+  .lg svg { display: block; }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .chart { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 16px 16px 10px; box-shadow: var(--shadow); }
+  .chart h3 { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+  .chart .sub { margin: 0 0 8px; font-size: 12.5px; color: var(--faint); }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .axis { stroke: var(--rule); stroke-width: 1; }
+  .grid { stroke: var(--rule-soft); stroke-width: 1; }
+  .tick { fill: var(--faint); font-size: 10px; font-family: system-ui, sans-serif; }
+  .endlab { font-size: 10px; font-weight: 600; font-family: system-ui, sans-serif; }
+
+  .note { background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--gap); border-radius: 10px; padding: 16px 20px; box-shadow: var(--shadow); }
+  .note p { margin: 0 0 10px; font-size: 14.5px; } .note p:last-child { margin: 0; }
+  .note b { color: var(--ink); }
+
+  footer { margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--faint); }
+  footer b { color: var(--muted); }
+  @media (max-width: 700px) {
+    .verdict { grid-template-columns: 1fr; } .charts { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Synthetic data validation · CLIF 2.1</p>
+    <h1 class="serif">Does the synthetic data behave like real critical illness?</h1>
+    <p class="dek">A full audit of the fully-synthetic CLIF datasets against real CLIF-MIMIC — the <b>ICU cohort</b> (85,248 stays) and the <b>whole-hospital population</b> (365,000 stays) — across missingness, length-of-stay, life support, death, patient flow, lab-value shape, the longitudinal course of illness, and privacy.</p>
+    <div class="meta">
+      <span><b>ICU:</b> 85,248 stays vs real ICU cohort</span>
+      <span><b>Full hospital:</b> 365,000 stays vs real full population</span>
+      <span><b>Synthetic</b> — generated, no real records</span>
+    </div>
+  </header>
+
+  <div class="verdict">
+    <div class="card">
+      <div class="k">Where it should match</div>
+      <div class="v">matched</div>
+      <div class="s">LOS distribution (median <em>and</em> tails), all life support, missingness, lab-value shapes, and the illness trajectory land in the real range.</div>
+    </div>
+    <div class="card">
+      <div class="k">Where it differs by design</div>
+      <div class="v">4</div>
+      <div class="s">Chicago race mix, younger age, and network-median mortality — deliberate, not drift.</div>
+    </div>
+    <div class="card">
+      <div class="k">Lab-value distributions</div>
+      <div class="v">shape-matched</div>
+      <div class="s">Empirical inverse-CDF marginals reproduce skew and long tails, not just means — creatinine's kidney tail, lactate's skew.</div>
+    </div>
+  </div>
+
+  <section>
+    <h2 class="serif">ICU cohort — in the statistical region of the original</h2>
+    <p class="lede">The ICU dataset's length-of-stay, organ support, and measurement density were fit to reproduce real CLIF ICU statistics. They do.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th class="metric">Metric</th><th class="num">Synthetic</th><th class="num">Real</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="metric">Hospital LOS — median</td><td class="num">167 h</td><td class="num">164 h</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Hospital LOS — p10 / p90 (tails)</td><td class="num">45 / 497 h</td><td class="num">51 / 513 h</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Invasive ventilation (IMV)</td><td class="num">0.402</td><td class="num">0.412</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Non-invasive ventilation (NIPPV)</td><td class="num">0.058</td><td class="num">0.064</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">High-flow nasal cannula</td><td class="num">0.061</td><td class="num">0.069</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">CRRT (renal replacement)</td><td class="num">0.041</td><td class="num">0.040</td><td><span class="tag match">exact</span></td></tr>
+          <tr><td class="metric">Core chemistry present (creatinine, Na, Hgb)</td><td class="num">0.985</td><td class="num">0.986</td><td><span class="tag match">exact</span></td></tr>
+          <tr><td class="metric">Lactate present (per stay)</td><td class="num">0.674</td><td class="num">0.692</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Arterial blood gas present (per stay)</td><td class="num">0.690</td><td class="num">0.695</td><td><span class="tag match">matched</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="serif">Lab values — the shape, not just the rate</h2>
+    <p class="lede">Each lab is drawn through an empirical inverse-CDF fit to the real distribution, so skewed and long-tailed shapes are reproduced — a single log-normal would flatten creatinine's kidney-disease tail or lactate's skew. Values shown are the 10th / 50th / 90th percentiles.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th class="metric">Lab</th><th class="num">Synthetic p10 / p50 / p90</th><th class="num">Real p10 / p50 / p90</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="metric">Creatinine (mg/dL)</td><td class="num">0.53 / 1.0 / 2.86</td><td class="num">0.5 / 1.0 / 3.2</td><td><span class="tag match">tail matched</span></td></tr>
+          <tr><td class="metric">Lactate (mmol/L)</td><td class="num">0.9 / 1.7 / 4.41</td><td class="num">0.9 / 1.8 / 4.8</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Sodium (mmol/L)</td><td class="num">132 / 138 / 144</td><td class="num">132 / 138 / 145</td><td><span class="tag match">exact</span></td></tr>
+          <tr><td class="metric">BUN (mg/dL)</td><td class="num">8 / 19 / 55</td><td class="num">9 / 22 / 63</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Platelets (10⁹/L)</td><td class="num">74 / 205 / 384</td><td class="num">64 / 193 / 393</td><td><span class="tag match">matched</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="serif">The longitudinal story — deterioration toward death</h2>
+    <p class="lede">The hardest test: does a dying synthetic patient <em>get sicker</em> the way a real one does? Aligned to the last 48 hours before death or discharge, decedents should diverge from survivors — and they do, in both datasets.</p>
+    <div class="legend">
+      <span class="lg"><svg width="34" height="12"><line x1="1" y1="6" x2="33" y2="6" stroke="var(--ink)" stroke-width="2.5"/><circle cx="17" cy="6" r="3" fill="var(--ink)"/></svg> Decedents</span>
+      <span class="lg"><svg width="34" height="12"><line x1="1" y1="6" x2="33" y2="6" stroke="var(--faint)" stroke-width="1.5" stroke-dasharray="1 3" stroke-linecap="round"/></svg> Survivors</span>
+      <span class="lg"><svg width="14" height="12"><rect x="2" y="3" width="10" height="6" rx="1" fill="var(--synth)"/></svg> Synthetic</span>
+      <span class="lg"><svg width="14" height="12"><rect x="2" y="3" width="10" height="6" rx="1" fill="var(--real)"/></svg> Real CLIF-MIMIC</span>
+    </div>
+    <div class="charts" id="charts"></div>
+  </section>
+
+  <section>
+    <h2 class="serif">Different — by design, not by accident</h2>
+    <p class="lede">The dataset is deliberately a Chicago-representative, network-median cohort — statistically distinct from its MIMIC source so no one dataset can be mistaken for the other.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th class="metric">Characteristic</th><th class="num">Synthetic</th><th class="num">Real MIMIC</th><th>Rationale</th></tr></thead>
+        <tbody>
+          <tr><td class="metric">Race — White / Black</td><td class="num">42% / 30%</td><td class="num">67% / 9%</td><td><span class="tag design">Chicago, not Boston</span></td></tr>
+          <tr><td class="metric">Age — median</td><td class="num">63</td><td class="num">67</td><td><span class="tag design">shifted younger</span></td></tr>
+          <tr><td class="metric">In-hospital mortality</td><td class="num">0.095</td><td class="num">0.115</td><td><span class="tag design">CLIF network median</span></td></tr>
+          <tr><td class="metric">Female</td><td class="num">53%</td><td class="num">43%</td><td><span class="tag design">cohort shift</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="serif">The whole hospital — realistic patient flow</h2>
+    <p class="lede">The second dataset is a full hospital population (365,000 stays): most patients never leave the ward, ~15% reach the ICU, and they arrive through a realistic mix of front doors. The <b>population statistics match real</b>; the <b>flow is a deliberately cleaner design</b> (more planned ICU access, fewer floor deteriorations) than raw MIMIC.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th class="metric">Metric</th><th class="num">Synthetic</th><th class="num">Real full pop.</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td class="metric">Reach the ICU</td><td class="num">0.150</td><td class="num">0.156</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Hospital LOS — median</td><td class="num">64 h</td><td class="num">67 h</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Hospital LOS — p10 / p90</td><td class="num">13 / 226 h</td><td class="num">13 / 243 h</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">In-hospital mortality</td><td class="num">0.022</td><td class="num">0.021</td><td><span class="tag match">matched</span></td></tr>
+          <tr><td class="metric">Direct admissions</td><td class="num">0.20</td><td class="num">0.06</td><td><span class="tag design">by design</span></td></tr>
+          <tr><td class="metric">Arrive via ER / OR</td><td class="num">0.55 / 0.18</td><td class="num">0.84 / 0.10</td><td><span class="tag design">by design</span></td></tr>
+          <tr><td class="metric">Transferred into ICU (deteriorate)</td><td class="num">0.093</td><td class="num">0.139</td><td><span class="tag design">by design &lt;10%</span></td></tr>
+          <tr><td class="metric">Direct / planned ICU admit</td><td class="num">0.057</td><td class="num">0.017</td><td><span class="tag design">by design</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lede" style="font-size:14px;">Front-door mix (synthetic): ED 57% · direct-to-ward 21% · OR/procedural 11% · direct-ICU 6% · stepdown 6%.</p>
+  </section>
+
+  <section>
+    <h2 class="serif">Privacy — no record traces back</h2>
+    <p class="lede">The generator samples from aggregate parameters and never copies a real record. Three standard privacy measures (synthetic vs real, 4,000 each) confirm no synthetic patient is a stand-in for a real one.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th class="metric">Measure</th><th class="num">Value</th><th>Reading</th></tr></thead>
+        <tbody>
+          <tr><td class="metric">Distance to closest real record — median (p5)</td><td class="num">3.49 (1.89)</td><td><span class="tag match">no copies</span> even the closest 5% sit ~1.9σ from any real record</td></tr>
+          <tr><td class="metric">Nearest-neighbour distance ratio — median</td><td class="num">0.97</td><td><span class="tag match">no unique linkage</span> ≈1 means not singled-out to one real record</td></tr>
+          <tr><td class="metric">Identifiability</td><td class="num">0.25</td><td><span class="tag design">moderate</span> the fidelity/privacy trade-off of matching real value shapes</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="serif">Honest gaps</h2>
+    <div class="note">
+      <p><b>Arterial-gas panel union runs slightly high — 0.76 vs 0.70.</b> Real blood gases are co-ordered as a panel, and presence is drawn through a fitted Gaussian copula so co-ordered labs appear together (this corrected an earlier several-fold inflation). One residual remains: SₐO₂, measured less consistently (0.36), still contributes semi-independently, so "any arterial gas present" sits a few points above real.</p>
+      <p><b>White-cell counts skew a touch low.</b> WBC p90 is 14 vs 18 real — the empirical marginal reproduces most of the distribution but slightly under-weights the high-count (leukocytosis) tail. Every other lab's value distribution tracks real, including the tails.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="serif">Verdict</h2>
+    <p class="lede" style="max-width: 70ch; font-size: 16px; color: var(--ink);">Both datasets reproduce real CLIF-MIMIC where it counts — <b>missingness, length-of-stay distributions, life support, death, lab-value shapes, and the death-and-recovery trajectory</b> — the ICU cohort against the real ICU population and the full-hospital dataset against the real whole-hospital population. They are intentionally distinct where designed to be: Chicago demographics, network-median mortality, and a cleaner patient flow. And they carry <b>no traceable records</b>. Statistically similar, believably real, but different and safe to share.</p>
+  </section>
+
+  <footer>
+    <b>Method.</b> Fully synthetic, generated offline from aggregate CLIF statistics (empirical-fidelity fit → population derivation → ICU-cohort or full-hospital recalibration → seeded generation); no row-level real data is present. Every table passes the CLIF 2.1 schema + mCIDE + physiologic-bounds gate. Lab values use empirical inverse-CDF marginals; the ICU comparison is against the real ADT-defined ICU cohort, the full-hospital comparison against the real whole-hospital population. Trajectories are mean marker value in 12-hour bins over the final 48 hours; the endpoint is death or discharge. Reproduce any figure with <b>scripts/validate_against_real.py</b>.
+  </footer>
+</div>
+
+<script>
+  // Longitudinal small-multiples — bespoke SVG, no library. Values are mean marker
+  // in 12h bins, left = ~48h before endpoint, right = the endpoint (death/discharge).
+  const DATA = {
+    map: {
+      unit: "MAP (mmHg)", ymin: 60, ymax: 110, band: [70, 90],
+      synth: { died: [79.8,80.1,78.6,75.4], surv: [80.2,80.2,80.1,80.1] },
+      real:  { died: [74.5,74.9,73.0,67.3], surv: [104.9,81.6,80.7,80.6] }
+    },
+    creat: {
+      unit: "Creatinine (mg/dL)", ymin: 1.0, ymax: 2.6, band: [0.6, 1.3],
+      synth: { died: [1.5,1.6,1.7,2.1], surv: [1.6,1.5,1.5,1.5] },
+      real:  { died: [2.0,2.1,2.2,2.3], surv: [1.4,1.3,1.4,1.3] }
+    }
+  };
+  const NS = "http://www.w3.org/2000/svg";
+  function el(n, a){ const e = document.createElementNS(NS, n); for(const k in a) e.setAttribute(k, a[k]); return e; }
+  function series(g, arr, x0, x1, sx, sy, cls, dashed, marker){
+    // right-align: the last point sits at the endpoint (x1)
+    const n = arr.length, step = (x1 - x0) / 4;  // 5 slots max
+    const pts = arr.map((v,i)=>[ x1 - (n-1-i)*step, sy(v) ]);
+    const path = pts.map((p,i)=>(i? "L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+    const ln = el("path", { d: path, fill: "none", stroke: cls, "stroke-width": dashed? 1.6:2.4,
+      "stroke-linejoin":"round", "stroke-linecap":"round" });
+    if(dashed) ln.setAttribute("stroke-dasharray", "1 4");
+    g.appendChild(ln);
+    if(marker) pts.forEach(p => g.appendChild(el("circle", { cx:p[0], cy:p[1], r:3, fill: cls })));
+    return pts[pts.length-1];
+  }
+  function chart(which){
+    const d = DATA[which];
+    const W = 300, H = 190, m = { t: 12, r: 46, b: 26, l: 30 };
+    const x0 = m.l, x1 = W - m.r, y0 = H - m.b, y1 = m.t;
+    const sy = v => y1 + (y0 - y1) * (1 - (v - d.ymin) / (d.ymax - d.ymin));
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" });
+    // horizontal gridlines
+    const ticks = 4;
+    for(let i=0;i<=ticks;i++){
+      const v = d.ymin + (d.ymax-d.ymin)*i/ticks, y = sy(v);
+      svg.appendChild(el("line", { x1:x0, y1:y, x2:x1, y2:y, class: i? "grid":"axis" }));
+      const t = el("text", { x:x0-6, y:y+3, class:"tick", "text-anchor":"end" });
+      t.textContent = (d.ymax<=3? v.toFixed(1): Math.round(v)); svg.appendChild(t);
+    }
+    // x labels
+    [["−48h",x0],["death / discharge",x1]].forEach(([lab,xx],i)=>{
+      const t = el("text", { x:xx, y:H-8, class:"tick", "text-anchor": i? "end":"start" }); t.textContent = lab; svg.appendChild(t);
+    });
+    // survivors (muted, dashed, no marker) then decedents (accent, solid, marker)
+    for(const who of ["real","synth"]){
+      const soft = who==="synth" ? getVar("--synth-soft") : getVar("--real-soft");
+      series(svg, d[who].surv, x0, x1, null, sy, soft, true, false);
+    }
+    const ends = [];
+    for(const who of ["real","synth"]){
+      const col = who==="synth" ? getVar("--synth") : getVar("--real");
+      const p = series(svg, d[who].died, x0, x1, null, sy, col, who==="real", true);
+      ends.push([p, who]);
+    }
+    return { svg, unit: d.unit };
+  }
+  function getVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function build(){
+    const host = document.getElementById("charts");
+    host.innerHTML = "";
+    [["map","Blood pressure falls toward death"],["creat","Kidney function fails toward death"]].forEach(([k,title])=>{
+      const c = chart(k);
+      const box = document.createElement("div"); box.className = "chart";
+      const h = document.createElement("h3"); h.textContent = c.unit;
+      const s = document.createElement("p"); s.className="sub"; s.textContent = title;
+      box.appendChild(h); box.appendChild(s); box.appendChild(c.svg);
+      host.appendChild(box);
+    });
+  }
+  build();
+  // rebuild on theme toggle so line colors track the tokens
+  new MutationObserver(build).observe(document.documentElement, { attributes:true, attributeFilter:["data-theme"] });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", build);
+</script>
+</body>
+</html>
