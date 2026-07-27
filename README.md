@@ -82,6 +82,22 @@ git clone https://github.com/riccc-rush-lab/clif_synthetic_2.1.git
 and [Data available off the shelf](#data-available-off-the-shelf). Validate your own
 output against a real CLIF reference with `scripts/validate_against_real.py`.
 
+### Prefer a GUI? The Cohort Designer
+
+No code required. Install the UI extra and launch a browser app where you move
+sliders for population shape, size, demographics, and illness rates, **preview**
+the cohort you'd get (mortality, length-of-stay, ventilation, organ support —
+with charts and a sample table), then **generate and download** the full dataset:
+
+```bash
+pip install "clifforge[ui]"    # or: uv sync --extra ui
+clif-forge ui                  # opens the Cohort Designer in your browser
+```
+
+It's a thin front-end over the same engine the CLI uses, and it shows the
+equivalent TOML recipe as you go — so you can start in the GUI and switch to the
+command line (or clif-icu.com, when it's live) with no change in output.
+
 ## How it stays synthetic
 
 - **Aggregate-only fit-then-sample.** A one-time fit stage emits a versioned
