@@ -69,6 +69,25 @@ def test_generate_without_pack_or_demo_errors(tmp_path, capsys: pytest.CaptureFi
     assert "--demo" in capsys.readouterr().err
 
 
+def test_ui_command_parses_with_default_port() -> None:
+    args = build_parser().parse_args(["ui"])
+    assert args.command == "ui"
+    assert args.port == 8501
+
+
+def test_ui_errors_cleanly_when_streamlit_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The UI is an optional extra; without it, `clif-forge ui` must give a clear
+    # install hint and a nonzero exit rather than a traceback.
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    rc = main(["ui"])
+    assert rc == 1
+    assert "clifforge[ui]" in capsys.readouterr().err
+
+
 def test_rng_fixture_is_seed_reproducible(rng: np.random.Generator, seed: int) -> None:
     first = rng.integers(0, 1_000_000, size=5)
     fresh = np.random.Generator(np.random.PCG64(seed))

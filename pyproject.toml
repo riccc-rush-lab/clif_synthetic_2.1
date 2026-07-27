@@ -40,6 +40,11 @@ dev = [
     "pytest>=8.0",
     "clifpy>=0.5",
 ]
+# Cohort Designer web app (`clif-forge ui`). Permissive: Apache-2.0 / BSD / MIT.
+ui = [
+    "streamlit>=1.30",
+    "pandas>=2.0",
+]
 
 [project.scripts]
 clif-forge = "clifforge.cli:main"
@@ -80,6 +85,13 @@ ignore_missing_imports = true
 # do not depend on); the fit estimators use scipy.stats only for MLE/rank stats.
 [[tool.mypy.overrides]]
 module = ["scipy.*"]
+ignore_missing_imports = true
+
+# The optional Cohort Designer UI depends on pandas + streamlit, neither of which
+# ships bundled type stubs; the UI is a thin front-end and is not part of the
+# generation core.
+[[tool.mypy.overrides]]
+module = ["pandas.*", "streamlit.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

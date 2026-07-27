@@ -93,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--out", required=True, help="Output directory for the versioned parameter pack."
     )
 
+    ui = sub.add_parser("ui", help="Launch the Cohort Designer web app (requires the 'ui' extra).")
+    ui.add_argument(
+        "--port", type=int, default=8501, help="Port for the Streamlit server (default 8501)."
+    )
+
     return parser
 
 
@@ -180,6 +185,32 @@ def _run_fit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_ui(args: argparse.Namespace) -> int:
+    """Launch the Streamlit Cohort Designer app."""
+    import importlib.util
+    import subprocess
+    from importlib.resources import as_file, files
+
+    if importlib.util.find_spec("streamlit") is None:
+        print(
+            "clif-forge ui: Streamlit is not installed. Install the UI extra:\n"
+            '    pip install "clifforge[ui]"',
+            file=sys.stderr,
+        )
+        return 1
+    with as_file(files("clifforge.ui") / "cohort_designer.py") as app_path:
+        cmd = [
+            sys.executable,
+            "-m",
+            "streamlit",
+            "run",
+            str(app_path),
+            "--server.port",
+            str(args.port),
+        ]
+        return subprocess.call(cmd)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point. Returns a process exit code (0 = success)."""
     parser = build_parser()
@@ -197,6 +228,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_generate(args)
     if args.command == "fit":
         return _run_fit(args)
+    if args.command == "ui":
+        return _run_ui(args)
 
     parser.print_help()
     return 0
