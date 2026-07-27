@@ -37,7 +37,7 @@ The generator can already produce a base dataset and parameterized derivatives v
 CLI flags, but three things are missing to make "one master + open derivation" real:
 
 - **No shareable base to derive from.** Realistic generation needs a *fitted pack*,
-  and the only one is fitted on credentialed MIMIC data (DUA-gated). Others have
+  and the only one is fitted on credentialed the source cohort data (DUA-gated). Others have
   nothing to build on unless they stage their own real CLIF data.
 - **No declarative variant surface.** Derivation is remembered CLI flags, not a
   saved, shareable, ideatable recipe. There is no preset library.
@@ -80,8 +80,8 @@ the compliance/release flow, and an agent/NL ideation UI (deferred).
   aggregate-only *and* has zero real-data lineage, so it is freely shareable and
   sidesteps the DUA entirely. Rationale: the master is already realistic (fidelity
   ~0.90), so a fit-on-synthetic round-trip preserves enough structure to seed
-  realistic variants, while the recalibrated-MIMIC pack would still carry MIMIC
-  provenance. (Alternative — ship the recalibrated MIMIC pack — is rejected: it needs
+  realistic variants, while the recalibrated-source-cohort pack would still carry the source cohort
+  provenance. (Alternative — ship the recalibrated source-cohort pack — is rejected: it needs
   a compliance nod and keeps real-data lineage.)
 - **KTD2 — A variant spec is plain declarative config, not code.** TOML mapping to the
   documented derive/recalibrate parameters, read with the **stdlib `tomllib`** (Python
@@ -108,7 +108,7 @@ the compliance/release flow, and an agent/NL ideation UI (deferred).
 ```mermaid
 flowchart TD
     subgraph AUTHORING [one-time, credentialed]
-      REAL[("real CLIF")] --> FIT1["clif-forge fit"] --> BASE["MIMIC base pack"]
+      REAL[("real CLIF")] --> FIT1["clif-forge fit"] --> BASE["the source cohort base pack"]
       BASE --> DERIVE["derive + recalibrate"] --> MASTER[("synthetic MASTER dataset<br>+ manifest")]
       MASTER --> FIT2["clif-forge fit on the master"] --> SHARE["shareable base pack<br>(committed, no real lineage)"]
     end
@@ -241,7 +241,7 @@ so anyone can derive realistic variants with no credential.
 **Approach:** Script the authoring step: run `run_fit` on the synthetic master dataset
 directory to produce an aggregate pack, write it to `base_pack/`, and commit it (add a
 gitignore exception like the `demo_output/` precedent). Record in its manifest that it
-was fit on synthetic data (provenance = synthetic-master, not MIMIC). Verify a small
+was fit on synthetic data (provenance = synthetic-master, not the source cohort). Verify a small
 generation from it passes the conformance gate and lands in a plausible range.
 
 **Execution note:** Verify the fit-on-synthetic round-trip preserves enough realism
@@ -334,7 +334,7 @@ synthetic base pack, generation manifest + distinctness, docs.
 ## Risks & Dependencies
 
 - **Fit-on-synthetic round-trip loss (U4)** — a pack fit on the synthetic master may
-  lose some realism vs the MIMIC-fitted pack. Mitigation: verify a small generation
+  lose some realism vs the source-cohort-fitted pack. Mitigation: verify a small generation
   before committing; fall back to the release-gated recalibrated pack if loss is large
   (Q1). This is the plan's one genuine execution-time unknown.
 - **Base pack size committed to the repo** — parameter-pack JSON is small (hundreds of
@@ -349,7 +349,7 @@ synthetic base pack, generation manifest + distinctness, docs.
 ## Open Questions
 
 - **Q1 (execution-time, U4):** Does the fit-on-synthetic base pack preserve enough
-  realism to seed variants, or must we ship the recalibrated MIMIC pack under the
+  realism to seed variants, or must we ship the recalibrated source-cohort pack under the
   release gate instead? Resolve by measuring a small generation from the fit-on-
   synthetic pack against the realism panel. Default: ship fit-on-synthetic.
 - ~~Q2: YAML vs TOML for the spec format.~~ **Resolved: TOML** — read with the stdlib

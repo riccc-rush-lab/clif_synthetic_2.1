@@ -327,7 +327,7 @@ placebo number, and the report always records **what** the reference was.
 
 The committed demo report's comparative numbers use a second synthetic draw, so
 they measure **generator self-consistency**, not real-data fidelity. Producing the
-real numbers needs a staged real CLIF reference and, for a CLIF-MIMIC reference,
+real numbers needs a staged real CLIF reference and, for a real CLIF reference,
 the patient-disjoint holdout split the fit stage reserved.
 
 One precondition deserves emphasis. The leakage guard decides a patient's
@@ -394,16 +394,16 @@ the public distribution — generation needs only the committed `base_pack/`. Se
 
 CLIFForge learns *how a realistic CLIF table is shaped* from aggregate,
 non-derivable statistics. That learned-parameter provenance — including the
-CLIF-MIMIC citation and the exact mCIDE snapshot — is documented in
+real CLIF citation and the exact mCIDE snapshot — is documented in
 `PROVENANCE.md` at the technical/methods level. All runtime dependencies are
 permissive (MIT / BSD / Apache-2.0).
 
 ### Release gate
 
-The parameter pack is fitted over MIMIC-IV-Ext-CLIF, governed by a PhysioNet
+The parameter pack is fitted over a credentialed real CLIF dataset, governed by a
 **credentialed** data use agreement. Fitting locally to an aggregate pack is
 permitted; *publishing* a derived artifact is not, until a human records the
-PhysioNet/MIMIC and Rush compliance review.
+credentialed-data and Rush compliance review.
 
 `scripts/release_gate.py` enforces this mechanically rather than by memory — it
 exits nonzero unless a completed `COMPLIANCE_ACK.md` exists (see

@@ -17,7 +17,7 @@ def sample_manifest() -> dict[str, Any]:
     return {
         "pack_version": "1.0",
         "clif_version": "2.1.0",
-        "fit_source": {"dataset_id": "MIMIC-IV-Ext-CLIF-sample", "commit": "abc1234"},
+        "fit_source": {"dataset_id": "credentialed-clif-sample", "commit": "abc1234"},
         "suppression_audit": {
             "patient": {
                 "cells_considered": 10,
@@ -26,7 +26,7 @@ def sample_manifest() -> dict[str, Any]:
             }
         },
         "tables": {
-            "patient": {"fitted": True, "source": "MIMIC-IV-Ext-CLIF v1.1.0"},
+            "patient": {"fitted": True, "source": "credentialed-clif v1.1.0"},
         },
     }
 

@@ -79,7 +79,7 @@ def sample_position(
     # Prone probabilities are pack-overridable so a derived pack can calibrate the
     # overall prone rate to a fitted target while keeping proning concentrated in
     # severe-hypoxemia windows (real prone prevalence is ~0.3%, far below the
-    # documented default that suited the un-fitted MIMIC pack).
+    # documented default that suited the un-fitted source-cohort pack).
     block = pack.tables.get("position", {})
     params = block.get("params", {}) if isinstance(block, dict) else {}
     prob_severe = float(params.get("prone_prob_severe", _PRONE_PROB_SEVERE))

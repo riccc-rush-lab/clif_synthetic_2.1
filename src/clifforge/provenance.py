@@ -2,11 +2,10 @@
 
 ``PROVENANCE.md`` is the technical/methods-level disclosure that keeps
 CLIFForge's public "synthetic generator" framing honest (R4a): it names,
-per table, whether the emitted parameters were fitted from real CLIF-MIMIC
-or are prior-driven (consortium rules / literature rates), records the
+per table, whether the emitted parameters were fitted from a real CLIF
+source or are prior-driven (consortium rules / literature rates), records the
 mCIDE/outlier reference source (URL + spec-repo commit + retrieval date),
-and carries the CLIF-MIMIC citation obligation for the methods
-documentation.
+and carries the CLIF citation for the methods documentation.
 """
 
 from __future__ import annotations
@@ -16,19 +15,15 @@ from pathlib import Path
 from typing import Any
 
 # Default citation used when the manifest does not supply its own
-# ``citation`` string. This intentionally cites the two facts that are
-# stably verifiable rather than inventing a specific "CLIF-MIMIC" author
-# list: the MIMIC-IV dataset paper, and the CLIF specification repository
-# whose pinned commit (recorded separately under ``reference_source``)
-# is the authoritative source for the exact CLIF-MIMIC derivation used.
+# ``citation`` string. It cites the stably verifiable fact: the CLIF
+# specification repository whose pinned commit (recorded separately under
+# ``reference_source``) is the authoritative source for the exact
+# derivation used by this pack.
 DEFAULT_CITATION = (
-    "Johnson, A.E.W., Bulgarelli, L., Shen, L. et al. MIMIC-IV, a freely "
-    "accessible electronic health record dataset. Sci Data 10, 1 (2023). "
-    "https://doi.org/10.1038/s41597-022-01899-x — derived per the Common "
-    "Longitudinal ICU data Format (CLIF) specification, "
-    "github.com/Common-Longitudinal-ICU-data-Format/CLIF (see "
-    "`reference_source` above for the exact pinned commit and retrieval "
-    "date used by this pack)."
+    "Derived per the Common Longitudinal ICU data Format (CLIF) "
+    "specification, github.com/Common-Longitudinal-ICU-data-Format/CLIF "
+    "(see `reference_source` above for the exact pinned commit and "
+    "retrieval date used by this pack)."
 )
 
 

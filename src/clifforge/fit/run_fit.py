@@ -24,7 +24,7 @@ the parameter pack, never the source records. The driver:
 
 Usage::
 
-    python -m clifforge.fit.run_fit --real-dir /path/to/CLIF --out data/param_packs/mimic
+    python -m clifforge.fit.run_fit --real-dir /path/to/CLIF --out data/param_packs/clif
 
 The real path is a CLI argument and is never committed to the repo.
 """
@@ -278,7 +278,7 @@ def run_fit(
     *,
     seed: int = 20260723,
     holdout_fraction: float = 0.2,
-    dataset_id: str = "MIMIC-IV-Ext-CLIF",
+    dataset_id: str = "credentialed-clif",
     config: SpineStateConfig | None = None,
 ) -> ParamPack:
     """Fit a real CLIF dataset into an aggregate parameter pack and write it."""
@@ -499,7 +499,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", required=True, help="output parameter-pack directory")
     parser.add_argument("--seed", type=int, default=20260723)
     parser.add_argument("--holdout-fraction", type=float, default=0.2)
-    parser.add_argument("--dataset-id", default="MIMIC-IV-Ext-CLIF")
+    parser.add_argument("--dataset-id", default="credentialed-clif")
     parser.add_argument("--grid-step-hours", type=float, default=1.0)
     args = parser.parse_args(argv)
 

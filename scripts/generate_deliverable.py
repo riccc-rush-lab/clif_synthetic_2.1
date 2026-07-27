@@ -24,18 +24,18 @@ age/med fit) and a fitted base pack.
 Examples:
     # the off-the-shelf base dataset
     uv run python scripts/generate_deliverable.py \
-        --base-pack data/param_packs/mimic_refit --real-dir ~/Data/clif-mimic \
+        --base-pack data/param_packs/clif_refit --real-dir ~/Data/clif \
         --out ~/Desktop/clif_synthetic_chicago_icu
 
     # a 20k high-acuity, higher-mortality, more-Hispanic derivative
     uv run python scripts/generate_deliverable.py \
-        --base-pack data/param_packs/mimic_refit --real-dir ~/Data/clif-mimic \
+        --base-pack data/param_packs/clif_refit --real-dir ~/Data/clif \
         --out ~/Desktop/derivative --n 20000 \
         --imv-rate 0.55 --mortality-scale 1.4 --vaso-frac 0.45 --hispanic-frac 0.45
 
     # the full hospital population (ward/ED/stepdown/ICU mix)
     uv run python scripts/generate_deliverable.py \
-        --base-pack data/param_packs/mimic_refit --real-dir ~/Data/clif-mimic \
+        --base-pack data/param_packs/clif_refit --real-dir ~/Data/clif \
         --out ~/Desktop/clif_synthetic_full_hospital --full-hospital
 """
 

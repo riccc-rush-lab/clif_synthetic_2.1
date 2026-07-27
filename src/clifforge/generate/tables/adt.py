@@ -10,15 +10,15 @@ the last ``out_dttm`` coincides with the encounter's discharge.
 Acuity -> location heuristic: an interval whose support level is at or above
 :data:`ICU_MIN_SUPPORT_LEVEL` (high-flow O2 / NIV and above) is ``icu``, else
 ``ward``. This is the plan's "ICU windows align with high-acuity spine segments"
-made concrete; it is a heuristic, not a fitted mapping, because MIMIC ``adt``
+made concrete; it is a heuristic, not a fitted mapping, because the source cohort ``adt``
 location structure was not fitted by U5.
 
 The resulting ICU segments are exposed via :func:`icu_windows` — the sole channel
 by which later tiers (vitals, labs, …) restrict observations to ICU time, read
 through the spine/orchestrator rather than by cross-reading this table.
 
-Un-fitted fields use documented MIMIC-appropriate constants rather than invented
-distributions (R15): ``hospital_type = "academic"`` (MIMIC is a single academic
+Un-fitted fields use documented source-cohort-appropriate constants rather than invented
+distributions (R15): ``hospital_type = "academic"`` (the source cohort is a single academic
 center), ``location_type = "medical_icu"`` for ICU rows (null off-ICU).
 
 **Arrival location.** By default every movement is a deterministic function of the
@@ -65,7 +65,7 @@ from clifforge.generate.spine import SpineFrame
 __all__ = ["ICU_MIN_SUPPORT_LEVEL", "AdtMovement", "adt_frame", "icu_windows", "sample_adt"]
 
 
-#: MIMIC-appropriate constants for fields with no fitted distribution (R15).
+#: source-cohort-appropriate constants for fields with no fitted distribution (R15).
 _HOSPITAL_TYPE = "academic"
 _ICU_LOCATION_TYPE = "medical_icu"
 
@@ -106,7 +106,7 @@ class AdtMovement:
 def _category_for(level: int, idx: int, enrich: bool) -> str:
     """Location category for an interval.
 
-    Default (un-fitted MIMIC pack): ``icu`` at/above the ICU threshold, else
+    Default (un-fitted source-cohort pack): ``icu`` at/above the ICU threshold, else
     ``ward``. Enriched (a derived pack sets ``enrich_locations``): the admission
     interval is ``ed`` (patients arrive through the emergency department), the
     high-flow/NIV tier is ``stepdown``, and invasive ventilation and above is

@@ -1,5 +1,5 @@
 {
-  "citation": "Johnson, A.E.W., Bulgarelli, L., Shen, L. et al. MIMIC-IV, a freely accessible electronic health record dataset. Sci Data 10, 1 (2023). https://doi.org/10.1038/s41597-022-01899-x \u2014 derived per the Common Longitudinal ICU data Format (CLIF) specification, github.com/Common-Longitudinal-ICU-data-Format/CLIF (see `reference_source` above for the exact pinned commit and retrieval date used by this pack).",
+  "citation": "Derived per the Common Longitudinal ICU data Format (CLIF) specification, github.com/Common-Longitudinal-ICU-data-Format/CLIF (see `reference_source` above for the exact pinned commit and retrieval date used by this pack).",
   "clif_version": "2.1.0",
   "field_sources": {
     "hospitalization": [
@@ -255,7 +255,7 @@
   },
   "fit_source": {
     "commit": "unknown",
-    "dataset_id": "MIMIC-IV-Ext-CLIF"
+    "dataset_id": "credentialed-clif"
   },
   "pack_version": "1.0",
   "reference_source": {

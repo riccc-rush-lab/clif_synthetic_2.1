@@ -1,6 +1,6 @@
 """Tests for the release gate (U25, R4/R28).
 
-The gate is the mechanical enforcement of the PhysioNet/Rush DUA blocker: a
+The gate is the mechanical enforcement of the credentialed-data and Rush DUA blocker: a
 public release must be blocked until a human records a compliance
 acknowledgment. These tests prove it blocks by default and only passes on a
 complete, approved, non-placeholder record.
