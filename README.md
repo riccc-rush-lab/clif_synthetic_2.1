@@ -78,7 +78,7 @@ git clone https://github.com/riccc-rush-lab/clif_synthetic_2.1.git
 ```
 
 **Is it clinically believable?** See the
-[synthetic-vs-real validation report](https://claude.ai/code/artifact/d72f6a8d-b209-469d-82ad-b99d2b9c3cc1)
+[synthetic-vs-real validation report](site/validation.html)
 and [Data available off the shelf](#data-available-off-the-shelf). Validate your own
 output against a real CLIF reference with `scripts/validate_against_real.py`.
 
@@ -355,7 +355,9 @@ uv run python scripts/validate_against_real.py \
 
 ### Validation report
 
-A [synthetic-vs-real validation report](https://claude.ai/code/artifact/d72f6a8d-b209-469d-82ad-b99d2b9c3cc1)
+A [synthetic-vs-real validation report](site/validation.html) — a self-contained
+HTML page committed to the repo ([`site/`](site/); open it in a browser, and the
+planned home at clif-icu.com will host it) —
 audits both shipped populations against real CLIF — the ICU cohort against the
 real ICU population and the whole-hospital dataset against the real whole-hospital
 population — across missingness, length-of-stay, life support, death, patient flow,
