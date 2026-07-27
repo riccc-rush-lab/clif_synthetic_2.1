@@ -69,6 +69,19 @@ Output is one `clif_<table>.parquet` per CLIF 2.1 table — load it with your us
 CLIF tooling. Tune any of the [rules](#each-modes-default-rules--and-how-to-change-them)
 (size, demographics, illness rates, population shape) via a TOML spec.
 
+**Not sure what to type?** Two commands make the terminal path self-explanatory:
+
+```bash
+clif-forge init                              # interactive: builds a recipe (.toml) by asking
+clif-forge generate --spec my-cohort.toml --preview   # dry run: prints the expected cohort,
+                                             # writes nothing — tune, then drop --preview to generate
+```
+
+`--preview` prints the cohort you'd get (mortality, length-of-stay, ventilation,
+organ support) from a quick sample, so you can dial in a recipe before generating
+the full dataset. Run `clif-forge --help` (or `clif-forge <command> --help`) for
+every option.
+
 **Want the ready-made datasets to inspect first?** Clone the repo — two off-the-shelf
 samples are committed (`sample_dataset/` ICU, `sample_full_hospital/` whole-hospital),
 and the full-size masters regenerate from `base_pack/` on demand:
