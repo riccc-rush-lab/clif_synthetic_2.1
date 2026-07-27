@@ -94,6 +94,14 @@ ignore_missing_imports = true
 module = ["pandas.*", "streamlit.*"]
 ignore_missing_imports = true
 
+# The `ui` extra is not installed in the lint/type CI job, so streamlit resolves to
+# Any there and its `@st.cache_*` decorators read as untyped under strict mode. The
+# UI module is a thin front-end (not the generation core), so relax just that one
+# strict check for it — the module still type-checks everywhere else.
+[[tool.mypy.overrides]]
+module = ["clifforge.ui.*"]
+disallow_untyped_decorators = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # clifpy's validator internals emit polars streaming-deprecation warnings we can't
