@@ -1,12 +1,15 @@
 # CLIFForge
 
-**A fully synthetic CLIF 2.1 dataset generator.**
+**A fully synthetic CLIF dataset generator — CLIF 2.1 today, built to grow with every CLIF version.**
 
-CLIFForge produces datasets in exact [CLIF 2.1](https://clif-consortium.github.io/website/)
+CLIFForge produces datasets in exact [CLIF](https://clif-consortium.github.io/website/)
 format that are **openly redistributable** and **clinically coherent** — built
 for the uses a credentialed real dataset cannot serve: public ETL smoke-testing,
-CI fixtures, agent development, teaching, and demos. It generates two population
-shapes off the same engine:
+CI fixtures, agent development, teaching, and demos. The shipping target is
+**CLIF 2.1**; the engine is version-agnostic by design, so **CLIF 3.0 and later
+versions slot in** as they are released and there is aggregate data to fit them to
+(see [CLIF versions & roadmap](#clif-versions--roadmap)). It generates two
+population shapes off the same engine:
 
 - an **ICU cohort** (every stay an ICU stay), and
 - a **whole-hospital population** (ward / ED / stepdown / ICU mix with realistic
@@ -359,6 +362,23 @@ population — across missingness, length-of-stay, life support, death, patient 
 lab-value shape, the longitudinal illness trajectory, and privacy. It documents
 what matches and what is intentionally different by design (demographics,
 network-median mortality, cleaner patient flow).
+
+## CLIF versions & roadmap
+
+CLIFForge is versioned to the CLIF standard it emits, so the consortium can have
+**synthetic datasets for every CLIF version off one engine**:
+
+| CLIF version | Status |
+|---|---|
+| **CLIF 2.1** | **Available now** — schemas, mCIDE, and the fitted base pack all target 2.1; every dataset here is 2.1-conformant. |
+| **CLIF 3.0** | **Planned** — lands once 3.0 is finalized and there is aggregate data to fit. The generator is schema-driven (tables, categories, and bounds come from vendored CLIF reference files, not hard-coded), so a new version is a data/refit step, not a rewrite. |
+| **Future versions** | The same path — vendor the version's dictionary + mCIDE, refit the base pack, ship. |
+
+The version a dataset targets is recorded in its `manifest.json`, so 2.1 and 3.0
+data are never confused. As versions land, the reference datasets and full-size
+masters will be published at the project's planned home, **clif-icu.com** (not yet
+live), so the consortium has one place to pull synthetic data for whichever CLIF
+version a study needs.
 
 ## Status
 
