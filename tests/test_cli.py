@@ -38,9 +38,12 @@ def test_no_command_prints_help_and_exits_zero(capsys: pytest.CaptureFixture[str
     assert "generate" in out and "fit" in out
 
 
-def test_generate_requires_flags() -> None:
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["generate"])  # missing --n-patients / --out
+def test_generate_requires_out_unless_preview(capsys: pytest.CaptureFixture[str]) -> None:
+    # --out is optional at the parser level (so --preview can dry-run), but a real
+    # generation still requires it.
+    rc = main(["generate", "--demo", "--n-patients", "3"])
+    assert rc == 1
+    assert "--out" in capsys.readouterr().err
 
 
 def test_generate_parses_flags() -> None:
@@ -69,6 +72,33 @@ def test_generate_without_pack_or_demo_errors(tmp_path, capsys: pytest.CaptureFi
     assert "--demo" in capsys.readouterr().err
 
 
+def test_generate_preview_prints_profile_and_writes_nothing(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --preview is a dry run: it prints the expected cohort profile and writes no
+    # files (it returns before the --out check, so no --out is needed).
+    rc = main(["generate", "--preset", "high-acuity", "--preview"])
+    assert rc == 0
+    printed = capsys.readouterr().out
+    assert "Expected cohort profile" in printed
+    assert "mortality" in printed
+    assert "reached ICU" in printed
+
+
+def test_init_writes_a_generatable_recipe(tmp_path, monkeypatch) -> None:
+    # The init wizard writes a TOML that `generate --spec` can actually load and run.
+    answers = iter(["study", "icu", "600", "9", "n", "n"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+    recipe = tmp_path / "study.toml"
+    assert main(["init", "--out", str(recipe)]) == 0
+    assert recipe.exists()
+
+    out = tmp_path / "ds"
+    rc = main(["generate", "--spec", str(recipe), "--n-patients", "6", "--out", str(out)])
+    assert rc == 0
+    assert (out / "clif_hospitalization.parquet").exists()
+
+
 def test_ui_command_parses_with_default_port() -> None:
     args = build_parser().parse_args(["ui"])
     assert args.command == "ui"
@@ -86,6 +116,18 @@ def test_ui_errors_cleanly_when_streamlit_missing(
     rc = main(["ui"])
     assert rc == 1
     assert "clifforge[ui]" in capsys.readouterr().err
+
+
+def test_cohort_profile_keys_and_formatting(pack: ParamPack) -> None:
+    from clifforge.preview import cohort_profile, format_profile
+
+    ds = generate_dataset(pack, n_patients=20, seed=1)
+    prof = cohort_profile(ds)
+    assert set(prof) >= {"n", "los_median_h", "imv", "icu", "vaso", "crrt"}
+    assert prof["n"] == 20
+    assert all(0.0 <= prof[k] <= 1.0 for k in ("imv", "icu", "vaso", "crrt"))
+    text = format_profile(prof)
+    assert "in-hospital mortality" in text and "reached ICU" in text
 
 
 def test_rng_fixture_is_seed_reproducible(rng: np.random.Generator, seed: int) -> None:

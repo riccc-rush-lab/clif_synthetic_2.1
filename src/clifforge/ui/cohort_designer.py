@@ -28,6 +28,7 @@ from clifforge import __version__
 from clifforge.fit.param_pack import ParamPack
 from clifforge.generate.orchestrator import generate_dataset
 from clifforge.manifest import write_manifest
+from clifforge.preview import PREVIEW_SAMPLE, cohort_profile
 from clifforge.variants import (
     VariantSpec,
     default_base_pack_path,
@@ -38,11 +39,12 @@ from clifforge.variants import (
 
 #: Encounters used for the interactive preview — small enough to regenerate on
 #: each change in a second or two; distributions converge at full size.
-PREVIEW_N = 350
+PREVIEW_N = PREVIEW_SAMPLE
 #: Above this, in-app generation is slow (generation is a per-encounter Python
 #: loop); steer the user to the CLI / streaming path instead.
 MAX_UI_N = 25_000
-TEAL = "#0f766e"
+#: clif-icu.com brand accent teal, used for the preview chart bars.
+TEAL = "#14867e"
 
 st.set_page_config(page_title="CLIFForge — Cohort Designer", page_icon="🫀", layout="wide")
 
@@ -83,29 +85,42 @@ def _build_spec(w: dict[str, Any]) -> VariantSpec:
     )
 
 
-def _cohort_stats(ds: Any) -> dict[str, float]:
-    """Compute realized headline stats from a generated dataset (defensive)."""
-    h = ds.tables["hospitalization"]
-    n = h.height
-    stats: dict[str, float] = {"n": float(n)}
-    if "discharge_category" in h.columns:
-        stats["mortality"] = float((h["discharge_category"] == "Expired").mean() or 0.0)
-    los = (h["discharge_dttm"] - h["admission_dttm"]).dt.total_seconds() / 3600.0
-    stats["los_median"] = float(los.median() or 0.0)
+def _recipe_toml(spec: VariantSpec) -> str:
+    """Render a faithful, minimal TOML recipe for ``spec``.
 
-    truth = ds.truth
-    peak = truth.group_by("hospitalization_id").agg(
-        pl.col("support_level").max().alias("peak"),
-        pl.col("cv_flag").cast(pl.Int8).max().alias("cv"),
-    )
-    stats["imv"] = float((peak["peak"] >= 3).mean() or 0.0)
-    stats["icu"] = float((peak["peak"] >= 2).mean() or 0.0)
-    stats["vaso"] = float(peak["cv"].mean() or 0.0)
-    crrt = ds.tables.get("crrt_therapy")
-    stats["crrt"] = (
-        float(crrt["hospitalization_id"].n_unique() / n) if crrt is not None and n else 0.0
-    )
-    return stats
+    Only fields that differ from the master defaults are emitted (omitted fields
+    fall back to the same defaults on load), so the shown recipe reproduces the
+    previewed cohort exactly — the GUI and ``clif-forge generate --spec`` agree.
+    """
+    d = VariantSpec()
+    lines = [
+        f'name = "{spec.name}"',
+        f'mode = "{spec.mode}"',
+        f"n = {spec.n}",
+        f"seed = {spec.seed}",
+    ]
+
+    demo: list[str] = []
+    if spec.age_shift != d.age_shift:
+        demo.append(f"age_shift = {spec.age_shift}")
+    if spec.hispanic_frac is not None:
+        demo.append(f"hispanic_frac = {spec.hispanic_frac}")
+    if spec.race_target:
+        inner = ", ".join(f'"{k}" = {v:.3f}' for k, v in spec.race_target.items())
+        demo.append(f"race_target = {{ {inner} }}")
+    if demo:
+        lines += ["", "[demographics]", *demo]
+
+    rates: list[str] = []
+    if spec.mode == "icu":  # full_hospital ignores these except crrt_prob
+        for field in ("imv", "mortality_scale", "vaso_frac", "prone_severe"):
+            if getattr(spec, field) != getattr(d, field):
+                rates.append(f"{field} = {getattr(spec, field)}")
+    if spec.crrt_prob != d.crrt_prob:
+        rates.append(f"crrt_prob = {spec.crrt_prob}")
+    if rates:
+        lines += ["", "[rates]", *rates]
+    return "\n".join(lines)
 
 
 @st.cache_data(show_spinner=False)
@@ -117,7 +132,7 @@ def _preview(spec_dict: dict[str, Any]) -> dict[str, Any]:
     spec = dataclasses.replace(VariantSpec(**spec_dict), n=PREVIEW_N)
     pack = spec_to_pack(spec, _base_pack())
     ds = generate_dataset(pack, n_patients=PREVIEW_N, seed=spec.seed)
-    stats = _cohort_stats(ds)
+    stats = cohort_profile(ds)
 
     h = ds.tables["hospitalization"]
     los = ((h["discharge_dttm"] - h["admission_dttm"]).dt.total_seconds() / 3600.0).to_numpy()
@@ -263,29 +278,22 @@ st.markdown(
     "**CLIF 2.1-conformant** — and reproducible from the spec below."
 )
 
-recipe_col, toml_col = st.columns([3, 2])
-with recipe_col:
-    st.subheader("Your recipe")
-    st.markdown(
-        f"**{spec.name}** · {'ICU cohort' if icu_mode else 'Whole-hospital'} · "
-        f"n = {spec.n:,} · seed {spec.seed}"
-    )
-with toml_col:
-    st.caption("Reproduce on the command line")
-    toml_lines = [
-        f'name = "{spec.name}"',
-        f'mode = "{spec.mode}"',
-        f"n = {spec.n}",
-        f"seed = {spec.seed}",
-    ]
-    st.code(
-        "\n".join(toml_lines) + f"\n\n$ clif-forge generate --spec {spec.name}.toml",
-        language="toml",
-    )
+st.header("Your recipe")
+st.markdown(
+    f"**{spec.name}** · {'ICU cohort' if icu_mode else 'Whole-hospital'} · "
+    f"n = {spec.n:,} · seed {spec.seed}"
+)
+with st.expander("Reproduce on the command line — same recipe, same output"):
+    st.markdown(f"Save this as `{spec.name}.toml`:")
+    # Plain (no syntax highlighting) so every token keeps full dark-on-light
+    # contrast; the block stays one-click copyable.
+    st.code(_recipe_toml(spec), language=None)
+    st.markdown("Then generate the identical dataset:")
+    st.code(f"clif-forge generate --spec {spec.name}.toml --out ./{spec.name}", language=None)
 
 st.divider()
 
-st.subheader("Preview")
+st.header("Preview")
 st.caption(
     f"A {PREVIEW_N}-encounter sample of this exact recipe. "
     "Full-size output converges to these shapes."
@@ -297,7 +305,7 @@ s = pv["stats"]
 m = st.columns(6)
 m[0].metric("Encounters (sample)", f"{int(s['n'])}")
 m[1].metric("Mortality", f"{s.get('mortality', 0) * 100:.1f}%")
-m[2].metric("LOS median", f"{s['los_median']:.0f} h")
+m[2].metric("LOS median", f"{s['los_median_h']:.0f} h")
 m[3].metric("Invasive vent", f"{s['imv'] * 100:.0f}%")
 m[4].metric("Reached ICU", f"{s['icu'] * 100:.0f}%")
 m[5].metric("Vasopressors", f"{s['vaso'] * 100:.0f}%")
@@ -315,7 +323,7 @@ st.dataframe(pv["sample"], width="stretch", hide_index=True)
 
 st.divider()
 
-st.subheader("Generate & download")
+st.header("Generate & download")
 st.markdown(
     f"Generates the full **{spec.n:,}-encounter** dataset — one `clif_*.parquet` per "
     "CLIF table, plus `clif_truth.parquet` (ground-truth acuity spine) and a "

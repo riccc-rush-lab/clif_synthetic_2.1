@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="CLIFForge — generate fully synthetic CLIF 2.1 ICU datasets.",
     )
     parser.add_argument("--version", action="version", version=f"clif-forge {__version__}")
-    sub = parser.add_subparsers(dest="command", metavar="{generate,fit}")
+    sub = parser.add_subparsers(dest="command", metavar="{generate,init,ui,fit}")
 
     generate = sub.add_parser(
         "generate", help="Generate a synthetic CLIF 2.1 dataset (offline, no real data)."
@@ -43,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--seed", type=int, default=None, help="Seed for byte-identical reproducible output."
     )
     generate.add_argument(
-        "--out", required=True, help="Output directory for the generated dataset."
+        "--out",
+        default=None,
+        help="Output directory for the generated dataset (required unless --preview).",
     )
     generate.add_argument(
         "--pack",
@@ -83,6 +85,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Cap CPU threads (the compute dial). Fewer threads use less CPU on shared "
         "or low-core machines. Default: all available cores.",
+    )
+    generate.add_argument(
+        "--preview",
+        action="store_true",
+        help="Dry run: print the expected cohort profile (mortality, length-of-stay, "
+        "ventilation, organ support) from a small sample and exit without writing. "
+        "Tune a recipe cheaply, then re-run without --preview to generate.",
+    )
+
+    init = sub.add_parser(
+        "init",
+        help="Interactively build a variant recipe (TOML) — the no-guesswork way to "
+        "start a custom cohort.",
+    )
+    init.add_argument(
+        "--out",
+        default=None,
+        help="Path to write the recipe (default: <name>.toml in the current directory).",
     )
 
     fit = sub.add_parser(
@@ -132,22 +152,41 @@ def _run_generate(args: argparse.Namespace) -> int:
 
     spec = None
     try:
+        # Resolve the pack + seed first (all that --preview needs).
         if use_spec:
             spec = load_spec(args.spec) if args.spec is not None else load_preset(args.preset)
             base = ParamPack.load(args.base_pack or default_base_pack_path())
             pack = spec_to_pack(spec, base)  # no real_dir -> demographic-override path
-            n_patients = args.n_patients if args.n_patients is not None else spec.n
             seed = args.seed if args.seed is not None else spec.seed
         else:
             pack = demo_pack() if args.demo else ParamPack.load(args.pack)
-            if args.n_patients is None:
-                print(
-                    "clif-forge generate: --n-patients is required without --spec/--preset.",
-                    file=sys.stderr,
-                )
-                return 1
-            n_patients = args.n_patients
             seed = args.seed if args.seed is not None else 42
+
+        if getattr(args, "preview", False):
+            # Dry run: sample a small cohort, print the expected profile, write nothing.
+            from clifforge.preview import PREVIEW_SAMPLE, cohort_profile, format_profile
+
+            ds = generate_dataset(pack, n_patients=PREVIEW_SAMPLE, seed=seed)
+            print(f"Expected cohort profile ({PREVIEW_SAMPLE}-encounter sample of this recipe):")
+            print(format_profile(cohort_profile(ds)))
+            print("\nRe-run without --preview to generate the full dataset.")
+            return 0
+
+        # A real generation needs a cohort size and an output directory.
+        if spec is not None:  # set exactly when --spec/--preset was given
+            n_patients = args.n_patients if args.n_patients is not None else spec.n
+        elif args.n_patients is None:
+            print(
+                "clif-forge generate: --n-patients is required without --spec/--preset.",
+                file=sys.stderr,
+            )
+            return 1
+        else:
+            n_patients = args.n_patients
+        if args.out is None:
+            print("clif-forge generate: --out is required (unless --preview).", file=sys.stderr)
+            return 1
+
         chunk_size = getattr(args, "chunk_size", 10_000)
         if n_patients > chunk_size:
             # Stream in bounded-memory batches (identical output, lower peak RAM).
@@ -185,6 +224,52 @@ def _run_fit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _prompt(label: str, default: str) -> str:
+    """Prompt with a shown default; blank input accepts the default."""
+    reply = input(f"{label} [{default}]: ").strip()
+    return reply or default
+
+
+def _run_init(args: argparse.Namespace) -> int:
+    """Interactively build a variant recipe (TOML) and write it to disk."""
+    from pathlib import Path
+
+    print("Build a CLIF cohort recipe. Press Enter to accept each [default].\n")
+    try:
+        name = _prompt("Dataset name", "my-cohort")
+        mode = ""
+        while mode not in ("icu", "full_hospital"):
+            mode = _prompt("Population — icu or full_hospital", "icu").lower()
+            if mode not in ("icu", "full_hospital"):
+                print("  Please type 'icu' or 'full_hospital'.")
+        n = _prompt("Size (encounters)", "5000")
+        seed = _prompt("Seed", "2025")
+
+        lines = [f'name = "{name}"', f'mode = "{mode}"', f"n = {int(n)}", f"seed = {int(seed)}"]
+
+        if _prompt("Customize demographics? y/n", "n").lower().startswith("y"):
+            age_shift = _prompt("  Age shift (years, +older / -younger)", "0")
+            lines += ["", "[demographics]", f"age_shift = {float(age_shift)}"]
+
+        if mode == "icu" and _prompt("Customize illness rates? y/n", "n").lower().startswith("y"):
+            imv = _prompt("  Invasive ventilation (0-1)", "0.28")
+            mortality = _prompt("  Mortality multiplier", "0.66")
+            lines += ["", "[rates]", f"imv = {float(imv)}", f"mortality_scale = {float(mortality)}"]
+    except (KeyboardInterrupt, EOFError):
+        print("\ninit cancelled.", file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(f"clif-forge init: invalid number: {exc}", file=sys.stderr)
+        return 1
+
+    out = Path(args.out) if args.out else Path(f"{name}.toml")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"\nWrote {out}. Preview it, then generate:")
+    print(f"    clif-forge generate --spec {out} --preview")
+    print(f"    clif-forge generate --spec {out} --out ./{name}")
+    return 0
+
+
 def _run_ui(args: argparse.Namespace) -> int:
     """Launch the Streamlit Cohort Designer app."""
     import importlib.util
@@ -198,6 +283,20 @@ def _run_ui(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    # Brand the app in the clif-icu.com palette (deep-teal CTA #0d5f59, ink text
+    # #14242c, surface #f7f8f7) instead of Streamlit's default red, via env vars
+    # so the theme travels with the launcher regardless of the working directory.
+    # A complete palette is set so Streamlit does not derive a bad text color.
+    # WCAG AA: white text on #0d5f59 is ~7.3:1; #14242c on #ffffff is ~15:1.
+    env = {
+        **os.environ,
+        "STREAMLIT_THEME_BASE": "light",
+        "STREAMLIT_THEME_PRIMARY_COLOR": "#0d5f59",
+        "STREAMLIT_THEME_TEXT_COLOR": "#14242c",
+        "STREAMLIT_THEME_BACKGROUND_COLOR": "#ffffff",
+        "STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR": "#f7f8f7",
+        "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false",
+    }
     with as_file(files("clifforge.ui") / "cohort_designer.py") as app_path:
         cmd = [
             sys.executable,
@@ -208,7 +307,7 @@ def _run_ui(args: argparse.Namespace) -> int:
             "--server.port",
             str(args.port),
         ]
-        return subprocess.call(cmd)
+        return subprocess.call(cmd, env=env)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -228,6 +327,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_generate(args)
     if args.command == "fit":
         return _run_fit(args)
+    if args.command == "init":
+        return _run_init(args)
     if args.command == "ui":
         return _run_ui(args)
 
