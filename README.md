@@ -19,6 +19,32 @@ aggregate CLIF statistics so its output lands in the real statistical region —
 close enough to train models against — while being provably synthetic (no real
 record leaves the fit stage; no synthetic record traces back to a real patient).
 
+## Two ways to use it
+
+**1. Use the ready-made datasets — as-is.** Real-looking, CLIF 2.1-conformant, and
+free to share: two samples committed here in the repo, plus full-size 85k-ICU and
+365k whole-hospital masters (see [Data available off the shelf](#data-available-off-the-shelf)).
+Clone and go.
+
+**2. Pull the levers and make your own.** Every dataset is a *recipe* you can
+change: `pip install`, tweak a short TOML spec, and generate a **distinct** cohort
+that still looks like the real deal. You control the levers —
+
+| Lever | What it changes |
+|---|---|
+| **population shape** (`mode`) | ICU cohort vs. whole-hospital population |
+| **size** (`n`) | any number of encounters, on any machine |
+| **demographics** | age shift, Hispanic fraction, exact race mix |
+| **illness rates** | invasive ventilation, mortality, vasopressors, CRRT, proning |
+| **compute** | RAM (`--chunk-size`) and CPU (`--max-threads`) dials |
+| **patient flow** (full-hospital) | admission mix, ward→ICU / OSH→ICU transfers |
+
+Change any lever and you get a new, still-clinically-realistic, still-conformant
+dataset — no two recipes produce the same data, and every one is reproducible from
+its recipe. The finer knobs are on the Python API; see
+[Ideate your own](#ideate-your-own-clif-like-dataset) and
+[What's tweakable](#whats-tweakable).
+
 ## Quickstart (for CLIF researchers)
 
 **Want realistic synthetic CLIF data of your own?** Install and generate — no real
