@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use CLIFForge or its synthetic datasets, please cite it as below."
+title: "CLIFForge: A fully synthetic CLIF dataset generator"
+abstract: >-
+  CLIFForge generates fully synthetic, openly redistributable datasets in the
+  Common Longitudinal ICU data Format (CLIF). It uses an empirical-fidelity
+  fit-then-sample method: aggregate, non-derivable statistics are fit once from
+  real CLIF data, and datasets are then sampled offline from a versioned
+  parameter pack so that no real record leaves the fit stage and no synthetic
+  record traces back to a real patient. Output conforms exactly to CLIF 2.1 and
+  is intended for ETL testing, CI fixtures, teaching, benchmarking, and model
+  development where a credentialed real dataset cannot be shared.
+type: software
+authors:
+  - family-names: Rojas
+    given-names: J. C.
+version: 0.1.0
+date-released: 2026-07-26
+license: MIT
+repository-code: "https://github.com/riccc-rush-lab/clif_synthetic_2.1"
+url: "https://github.com/riccc-rush-lab/clif_synthetic_2.1"
+keywords:
+  - CLIF
+  - synthetic-data
+  - ICU
+  - critical-care
+  - healthcare
+  - electronic-health-records
