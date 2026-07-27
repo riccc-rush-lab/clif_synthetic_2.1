@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Release gate — block a public release until compliance acknowledgment is recorded.
 
-The parameter pack is fitted over MIMIC-IV-Ext-CLIF, which is governed by a
-PhysioNet **credentialed** data use agreement. Fitting locally to an aggregate
-pack is permitted; *publishing* a derived artifact (the demo dataset, the pack,
-a tagged public release) is gated on a recorded human acknowledgment from
-PhysioNet/MIMIC and Rush research compliance.
+The parameter pack is fitted over a credentialed real CLIF dataset, which is
+governed by a **credentialed** data use agreement. Fitting locally to an
+aggregate pack is permitted; *publishing* a derived artifact (the demo dataset,
+the pack, a tagged public release) is gated on a recorded human acknowledgment
+from the credentialed-data provider and Rush research compliance.
 
 This script makes that gate mechanical instead of remembered. It exits nonzero
 unless a compliance acknowledgment is present and records all required fields with
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         problems = [
             f"{args.ack} not found (and no {ACK_ENV_VAR} env var). A public release "
-            "requires a recorded PhysioNet/MIMIC + Rush compliance acknowledgment."
+            "requires a recorded credentialed-data and Rush compliance acknowledgment."
         ]
     else:
         problems = check_ack_text(text)
@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)
         print(
-            "\nRecord the PhysioNet/MIMIC + Rush review in COMPLIANCE_ACK.md "
+            "\nRecord the credentialed-data and Rush review in COMPLIANCE_ACK.md "
             "(see COMPLIANCE_ACK.template.md) before publishing.",
             file=sys.stderr,
         )

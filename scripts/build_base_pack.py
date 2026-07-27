@@ -14,7 +14,7 @@ same compliance determination as the datasets (aggregate statistics, no PHI).
 
 Usage:
     uv run python scripts/build_base_pack.py \
-        --fitted-pack data/param_packs/mimic_refit --real-dir ~/Data/clif-mimic --out base_pack
+        --fitted-pack data/param_packs/clif_refit --real-dir ~/Data/clif --out base_pack
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--fitted-pack", required=True, help="Fitted base pack (e.g. mimic_refit).")
+    ap.add_argument("--fitted-pack", required=True, help="Fitted base pack (e.g. clif_refit).")
     ap.add_argument("--real-dir", required=True, help="Real CLIF dir (age/med aggregate inputs).")
     ap.add_argument("--out", default="base_pack", help="Output pack directory.")
     args = ap.parse_args(argv)

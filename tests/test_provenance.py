@@ -12,14 +12,14 @@ def test_write_provenance_marks_fitted_and_prior_driven_tables(tmp_path: Path) -
     manifest: dict[str, Any] = {
         "pack_version": "1.0",
         "clif_version": "2.1.0",
-        "fit_source": {"dataset_id": "MIMIC-IV-Ext-CLIF-sample", "commit": "abc1234"},
+        "fit_source": {"dataset_id": "credentialed-clif-sample", "commit": "abc1234"},
         "reference_source": {
             "mcide_url": "https://github.com/Common-Longitudinal-ICU-data-Format/CLIF",
             "mcide_commit": "deadbeef",
             "retrieved_date": "2026-07-01",
         },
         "tables": {
-            "patient": {"fitted": True, "source": "MIMIC-IV-Ext-CLIF v1.1.0"},
+            "patient": {"fitted": True, "source": "credentialed-clif v1.1.0"},
             "ecmo_mcs": {"fitted": False, "source": "consortium clinical rules"},
         },
         "suppression_audit": {"patient": {"cells_suppressed": 1}},
@@ -41,7 +41,7 @@ def test_write_provenance_uses_default_citation_when_absent(tmp_path: Path) -> N
     manifest: dict[str, Any] = {
         "pack_version": "1.0",
         "clif_version": "2.1.0",
-        "fit_source": {"dataset_id": "MIMIC-IV-Ext-CLIF-sample", "commit": "abc1234"},
+        "fit_source": {"dataset_id": "credentialed-clif-sample", "commit": "abc1234"},
         "tables": {},
         "suppression_audit": {},
     }
@@ -60,11 +60,11 @@ def test_write_provenance_uses_manifest_citation_when_present(tmp_path: Path) ->
         "fit_source": {"dataset_id": "x", "commit": "y"},
         "tables": {},
         "suppression_audit": {},
-        "citation": "Custom CLIF-MIMIC citation line.",
+        "citation": "Custom real CLIF citation line.",
     }
 
     out_path = tmp_path / "PROVENANCE.md"
     write_provenance(out_path, manifest)
 
     text = out_path.read_text(encoding="utf-8")
-    assert "Custom CLIF-MIMIC citation line." in text
+    assert "Custom real CLIF citation line." in text

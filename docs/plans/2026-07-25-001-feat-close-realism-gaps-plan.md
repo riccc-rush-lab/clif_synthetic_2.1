@@ -97,7 +97,7 @@ separately).
 ## Key Technical Decisions
 
 - **KTD1 — Re-fit, don't patch.** Vitals autocorrelation and per-state dispersion are
-  learned by re-running the fit stage on real CLIF-MIMIC with the robust estimator,
+  learned by re-running the fit stage on real CLIF with the robust estimator,
   producing a genuinely fitted base pack. Rationale: the empirical-fidelity principle
   (R15 in the source generator plan) — fitted structure over invented constants; the
   current `repair_vitals_dispersion` hardcodes aggregate σ and cannot supply real φ.
@@ -128,12 +128,12 @@ The change spans both stages; the data path and where each unit acts:
 
 ```mermaid
 flowchart LR
-    R[("real CLIF-MIMIC")] --> FITG
+    R[("real CLIF")] --> FITG
     subgraph FITG["fit stage"]
       A["U1 robust AR(1)<br>φ + per-state σ"]
       L["U2 ICU-conditioned<br>lab presence"]
     end
-    FITG --> BP["base pack (mimic)"]
+    FITG --> BP["base pack (real CLIF)"]
     BP --> DER["U5 Chicago derivation<br>(scripted)"]
     DER --> CP["chicago pack"]
     CP --> RECG
@@ -372,9 +372,9 @@ Chicago derivation, deliverable regeneration, and a realism regression check.
 - **Peak-shape vs rate coupling** (U4) — moving peak shape perturbs IMV/mortality.
   Mitigation: re-tune on the spine-only fast path before full generation; hold the envelope
   as the acceptance bound.
-- **DUA/compliance** — regenerated datasets remain MIMIC-derived local artifacts under the
+- **DUA/compliance** — regenerated datasets remain the source cohort-derived local artifacts under the
   existing release gate; no change to that flow.
-- **Real data availability** — the re-fit needs staged real CLIF-MIMIC at `~/Data/clif-mimic`
+- **Real data availability** — the re-fit needs staged real CLIF at `~/Data/clif`
   and the `eval` extra for fidelity/privacy checks.
 
 ---
@@ -383,7 +383,7 @@ Chicago derivation, deliverable regeneration, and a realism regression check.
 
 - **Q1 (execution-time, U1):** Does the robust trim alone recover physiologic φ on the coarse
   grid, or is native-cadence pairing needed? Resolve by inspecting a single-vital re-fit.
-- **Q2 (U4):** Which real peak profile is the target — MIMIC's own per-hospitalization peak
+- **Q2 (U4):** Which real peak profile is the target — the source cohort's own per-hospitalization peak
   distribution, or a network-median blend? Default: the fitted per-hospitalization peak
   profile, documented as the reference.
 - **Q3 (U6):** Regenerate at the same 85,248 ICU-encounter scale, or re-derive the count from

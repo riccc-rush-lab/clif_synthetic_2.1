@@ -2,7 +2,7 @@
 
 Generated 2026-07-24. All data is fully synthetic — sampled from an aggregate parameter pack, never copied from a real record.
 
-**Reference:** a second independent synthetic draw (seed 43). These comparative numbers measure **generator self-consistency across seeds**, NOT fidelity to real patient data — computing real-data fidelity requires a credentialed CLIF-MIMIC reference and is gated by the PhysioNet DUA.
+**Reference:** a second independent synthetic draw (seed 43). These comparative numbers measure **generator self-consistency across seeds**, NOT fidelity to real patient data — computing real-data fidelity requires a credentialed real CLIF reference and is gated by the credentialed DUA.
 
 ## 1. Dataset
 

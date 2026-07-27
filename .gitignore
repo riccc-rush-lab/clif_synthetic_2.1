@@ -10,7 +10,7 @@ venv/
 .ruff_cache/
 .pytest_cache/
 
-# Real / fitted medical data — NEVER commit. Real CLIF-MIMIC lives at absolute
+# Real / fitted medical data — NEVER commit. Real CLIF lives at absolute
 # paths outside this repo; the fit stage emits only aggregate parameter packs.
 /data/
 *.parquet

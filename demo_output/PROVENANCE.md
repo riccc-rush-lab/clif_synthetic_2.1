@@ -8,7 +8,7 @@ reproduced here.
 
 - CLIF version: `2.1.0`
 - Parameter pack version: `1.0`
-- Fit source dataset: `MIMIC-IV-Ext-CLIF`
+- Fit source dataset: `credentialed-clif`
 - Reference spec: CLIF `966bc5fb0dc0` retrieved 2026-07-23
 
 Per-table provenance (fitted / spine-derived / prior-driven) is recorded in the
@@ -16,10 +16,10 @@ repository root [`PROVENANCE.md`](../PROVENANCE.md).
 
 ## Citation
 
-Johnson, A.E.W., Bulgarelli, L., Shen, L. et al. MIMIC-IV, a freely accessible electronic health record dataset. Sci Data 10, 1 (2023). https://doi.org/10.1038/s41597-022-01899-x — derived per the Common Longitudinal ICU data Format (CLIF) specification, github.com/Common-Longitudinal-ICU-data-Format/CLIF (see `reference_source` above for the exact pinned commit and retrieval date used by this pack).
+Derived per the Common Longitudinal ICU data Format (CLIF) specification, github.com/Common-Longitudinal-ICU-data-Format/CLIF (see `reference_source` above for the exact pinned commit and retrieval date used by this pack).
 
 ## Release gate
 
 Publishing this directory or tagging a public release requires a recorded
-PhysioNet/MIMIC + Rush compliance acknowledgment; `scripts/release_gate.py`
+credentialed-data and Rush compliance acknowledgment; `scripts/release_gate.py`
 enforces it. See `COMPLIANCE_ACK.template.md`.

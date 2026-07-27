@@ -7,7 +7,7 @@ can distinguish empirically-fitted structure from documented priors.
 
 Three provenance classes:
 
-- **fitted** — sampled from parameters fit over real CLIF-MIMIC at the fit stage
+- **fitted** — sampled from parameters fit over real CLIF at the fit stage
   (U5) and stored in the versioned parameter pack.
 - **spine-derived** — no separate fitted block; structure is a deterministic or
   heuristic function of the fitted latent spine (organ-support trajectory,
@@ -40,6 +40,6 @@ Three provenance classes:
 | `provider` | prior-driven | one attending + one nurse spanning each stay |
 
 **Release gate:** any public release of a generated dataset or the parameter pack
-requires PhysioNet/MIMIC-IV credentialed-DUA and Rush compliance confirmation.
+requires credentialed-data and Rush compliance confirmation.
 Fitting locally to an aggregate pack is permitted; releasing derived artifacts is
 gated.

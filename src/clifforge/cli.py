@@ -5,7 +5,7 @@ Two subcommands:
 * ``generate`` — sample a synthetic CLIF 2.1 dataset offline from a parameter
   pack (implemented in U21).
 * ``fit`` — the one-time fit stage that builds a parameter pack over real
-  CLIF-MIMIC (implemented in U5).
+  real CLIF (implemented in U5).
 
 At the scaffold stage both are argument-parsing stubs; they parse and validate
 their flags but do not yet run a pipeline.
@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     fit = sub.add_parser(
-        "fit", help="Fit a parameter pack over real CLIF-MIMIC (one-time, requires real data)."
+        "fit", help="Fit a parameter pack over real CLIF (one-time, requires real data)."
     )
     fit.add_argument("--real-dir", required=True, help="Directory of real CLIF parquet files.")
     fit.add_argument(
@@ -168,7 +168,7 @@ def _run_generate(args: argparse.Namespace) -> int:
 
 
 def _run_fit(args: argparse.Namespace) -> int:
-    """Fit a parameter pack over real CLIF-MIMIC (U5)."""
+    """Fit a parameter pack over real CLIF (U5)."""
     from clifforge.fit.run_fit import run_fit
 
     try:

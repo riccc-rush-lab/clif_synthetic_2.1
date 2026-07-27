@@ -10,11 +10,11 @@ generate it.
 
 ## Why this gate exists
 
-CLIFForge's parameter pack is fitted over MIMIC-IV-Ext-CLIF, governed by a
-PhysioNet **credentialed** data use agreement. Fitting locally to an aggregate
-pack is permitted. **Publishing** a derived artifact — the demo dataset, the
-parameter pack, or a tagged public release — requires confirmed PhysioNet/MIMIC
-and Rush research-compliance sign-off.
+CLIFForge's parameter pack is fitted over a credentialed real CLIF dataset,
+governed by a **credentialed** data use agreement. Fitting locally to an
+aggregate pack is permitted. **Publishing** a derived artifact — the demo
+dataset, the parameter pack, or a tagged public release — requires confirmed
+credentialed-data and Rush research-compliance sign-off.
 
 ## Record
 
@@ -27,5 +27,5 @@ and Rush research-compliance sign-off.
 
 <Summarize what was checked: that no row-level real record is present in the
 published artifact, that the fit stage emitted aggregate parameters only, that
-the minimum-cell-count suppression held, and the PhysioNet/Rush determination
-relied upon.>
+the minimum-cell-count suppression held, and the credentialed-data and Rush
+determination relied upon.>

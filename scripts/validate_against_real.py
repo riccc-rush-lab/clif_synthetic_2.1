@@ -14,7 +14,7 @@ Usage::
 
     uv run python scripts/validate_against_real.py \
         --synthetic ~/Desktop/clif_synthetic_chicago_icu_corrected \
-        --real ~/Data/clif-mimic --out validation.json
+        --real ~/Data/clif --out validation.json
 """
 
 from __future__ import annotations

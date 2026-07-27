@@ -9,10 +9,10 @@ on:
     types: [published]
 
 jobs:
-  # Publication gate (R4, R28). The parameter pack is fitted over
-  # MIMIC-IV-Ext-CLIF under a PhysioNet credentialed DUA: fitting locally is
+  # Publication gate (R4, R28). The parameter pack is fitted over a credentialed
+  # real CLIF dataset under a credentialed DUA: fitting locally is
   # permitted, publishing a derived artifact is not until a human records the
-  # PhysioNet/MIMIC + Rush compliance review. The acknowledgment (COMPLIANCE_ACK.md)
+  # credentialed-data and Rush compliance review. The acknowledgment (COMPLIANCE_ACK.md)
   # is deliberately local-only — it can carry a reviewer's identity and is
   # gitignored — so CI reads it from the COMPLIANCE_ACK repository secret instead.
   # Set that secret to enforce the gate in CI; when it is absent the gate skips

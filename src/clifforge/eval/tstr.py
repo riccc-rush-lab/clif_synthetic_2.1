@@ -14,7 +14,7 @@ by training on synthetic instead of real (R19). LightGBM is pinned deterministic
 All feature work stays in polars; ``.to_pandas()`` happens only at the LightGBM
 boundary.
 
-**Leakage guard (R19).** When the real test set is a CLIF-MIMIC split rather than
+**Leakage guard (R19).** When the real test set is a real CLIF split rather than
 Rush-CLIF, :func:`assert_holdout_disjoint` recomputes each test patient's
 partition from the pack manifest's split spec (the same ``sha1_mod_10000``
 predicate the fit stage used) and fails if any test patient was in the fit

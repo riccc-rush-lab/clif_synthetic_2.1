@@ -1,7 +1,7 @@
-"""Population recalibration: reshape a MIMIC-fitted pack to a target ICU cohort.
+"""Population recalibration: reshape a source-cohort-fitted pack to a target ICU cohort.
 
-The raw MIMIC-IV fit is faithful to MIMIC, but MIMIC is one high-acuity academic
-center: its fitted spine over-concentrates trajectories at ventilator acuity
+The raw fit is faithful to its source cohort, but that cohort is one high-acuity
+academic center: its fitted spine over-concentrates trajectories at ventilator acuity
 (sampled peak level 4 ~0.59 vs ~0.34 in the real per-hospitalization peak the fit
 records) and terminates them too quickly (sampled ICU LOS ~28h vs the ~47h real
 median). That single distortion cascades: it inflates invasive-ventilation and
@@ -36,9 +36,9 @@ targets are all *measured real quantities*, not free knobs:
   property once stays are realistically long.
 
 The defaults target the CLIF network median (in-hospital mortality ~9.5%,
-invasive ventilation ~41%, ICU LOS ~47h) rather than MIMIC's own higher-acuity
+invasive ventilation ~41%, ICU LOS ~47h) rather than the source cohort's own higher-acuity
 figures, so the output represents a generic US ICU and is statistically distinct
-from its MIMIC source while remaining in the real cross-site envelope. All spine
+from its source cohort while remaining in the real cross-site envelope. All spine
 edits operate on a deep copy; the input pack is never mutated (R22).
 """
 
@@ -62,7 +62,7 @@ __all__ = [
 _HIGH_LEVELS: tuple[str, ...] = ("3", "4", "5")
 
 #: Robust within-physiologic-bounds dispersion (1.4826 x MAD) per vital, measured
-#: on real CLIF-MIMIC. The fitted AR(1) ``sigma`` is corrupted by extreme charting
+#: on real CLIF. The fitted AR(1) ``sigma`` is corrupted by extreme charting
 #: artifacts (e.g. MAP sigma ~4000 mmHg), so the generated walk otherwise pins
 #: values to the outlier-clamp bounds; these aggregate real dispersions replace it.
 #: (The estimator fix in ``fit._fit_ar1`` prevents this in future fits; this repairs
@@ -87,7 +87,7 @@ _CORRUPT_SIGMA_FACTOR: float = 3.0
 #: held exactly, but summing many tightened (less-skewed) sojourns then pulls the
 #: LOS *median* up toward that fixed mean; under-compensating (< 1) trims the scale
 #: back so the summed-LOS median holds while the tails still contract. Measured
-#: against real CLIF-MIMIC: at full compensation the hospital-LOS median overshot
+#: against real CLIF: at full compensation the hospital-LOS median overshot
 #: ~165h→~193h, and 0.7 restores it (~163h) with tails tracking real.
 _SOJOURN_MEAN_COMPENSATION: float = 0.7
 
@@ -360,7 +360,7 @@ def recalibrate_to_network_median(
 ) -> ParamPack:
     """Return a deep-copied pack recalibrated to the CLIF network-median ICU cohort.
 
-    The defaults were tuned against real CLIF-MIMIC so the generated cohort's
+    The defaults were tuned against real CLIF so the generated cohort's
     length-of-stay, organ-support prevalences, and per-stay measurement density
     land in the real cross-site range (see module docstring). Every argument is a
     documented lever over that transform; the input pack is not mutated.
